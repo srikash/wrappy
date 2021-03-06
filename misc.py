@@ -5,13 +5,45 @@ Python scripts for miscellaneous utility
 import os
 import sys
 import shutil
+import platform
 import subprocess
 import numpy as np
 from pathlib import Path
 from scipy import ndimage
 import multiprocessing as mp
+import datetime import datetime
 import matplotlib.pyplot as plt
 from skimage import transform, util
+
+def exec_shell(cmd,verbose=False):
+    print(" ")
+    print("System    : " + platform.platform(terse=True))
+    print("Python    : " + "Python " + platform.python_version())
+    print("Compiler  : " + platform.python_compiler())
+    print("User      : " + platform.node())
+    print("Date      : " + str(datetime.now()))
+    print(" ")
+    print("% ---------------------------------------------------------------- %")
+    print(" Running Process ")
+    print(" ")
+    print(" ")
+
+    start_time = datetime.now()
+
+    print(cmd)
+
+    if verbose is False:
+        subprocess.run(cmd, shell=True,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    elif verbose is True:
+        subprocess.run(cmd, shell=True)
+    
+    end_time = datetime.now()
+    diff_time = (start_time - end_time).total_seconds()
+
+    print(" ")
+    print(" ")
+    print(" Process Completed in %.2f seconds" % round(diff_time,2))
+    print("% ---------------------------------------------------------------- %")
 
 def exec_parashell(cmd_list):
     num_cores = mp.cpu_count()
@@ -28,19 +60,19 @@ def get_prefix(src, verbose=False):
         PosixPath: path to the input file without extension
     """
     if verbose is True:
-        print("%---------------------------------------%")
-        print("++ Checking File Extension")
-        print("%---------------------------------------%")
+        print(" ")
+        print("Checking File Extension")
+        print(" ")
     check_suffix = src.suffixes
     if len(check_suffix) == 1:
         if verbose is True:
-            print("++++ File has a NIFTI suffix.")
-            print("%---------------------------------------%")
+            print("File has a NIFTI suffix.")
+            print(" ")
         src_prefix = src.with_suffix('')
     elif len(check_suffix) == 2:
         if verbose is True:
-            print("++++ File has a NIFTI_GZ suffix.")
-            print("%---------------------------------------%")
+            print("File has a NIFTI_GZ suffix.")
+            print(" ")
         src_prefix = src.with_suffix('').with_suffix('')
     return src_prefix
 
@@ -51,17 +83,17 @@ def make_dir(src, verbose=False):
         src (PosixPath): path to the input file
     """
     if verbose is True:
-        print("%---------------------------------------%")
-        print("++ Making Directory")
-        print("%---------------------------------------%")
+        print(" ")
+        print("Making Directory")
+        print(" ")
     if len(src.suffixes) != 0:
         newfolder_path = get_prefix(src)
     else:
         newfolder_path = src
     if verbose is True:
-        print("++++ Directory Name : ")
+        print("Directory Name : ")
         print("     "+str(newfolder_path))
-        print("%---------------------------------------%")
+        print(" ")
     newfolder_path.mkdir(parents=True, exist_ok=True)
 
 
@@ -72,17 +104,17 @@ def remove_dir(src, verbose=False):
         src (PosixPath): path to the input file
     """
     if verbose is True:
-        print("%---------------------------------------%")
-        print("++ Removing Directory")
-        print("%---------------------------------------%")
+        print(" ")
+        print("Removing Directory")
+        print(" ")
     if len(src.suffixes) != 0:
         newfolder_path = get_prefix(src)
     else:
         newfolder_path = src
     if verbose is True:
-        print("++++ Directory Name : ")
+        print("Directory Name : ")
         print("     "+str(newfolder_path))
-        print("%---------------------------------------%")
+        print(" ")
     shutil.rmtree(newfolder_path)
 
 
