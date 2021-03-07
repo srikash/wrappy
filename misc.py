@@ -1,6 +1,6 @@
 #!/bin/env python
 """
-Python scripts for miscellaneous utility
+Python scripts for miscellaneous use
 """
 import os
 import sys
@@ -8,6 +8,7 @@ import shutil
 import platform
 import subprocess
 import numpy as np
+import nibabel as nib
 from pathlib import Path
 from scipy import ndimage
 import multiprocessing as mp
@@ -15,7 +16,8 @@ import datetime import datetime
 import matplotlib.pyplot as plt
 from skimage import transform, util
 
-def exec_shell(cmd,verbose=False):
+
+def exec_shell(cmd, verbose=False):
     print(" ")
     print("System    : " + platform.platform(terse=True))
     print("Python    : " + "Python " + platform.python_version())
@@ -33,22 +35,25 @@ def exec_shell(cmd,verbose=False):
     print(cmd)
 
     if verbose is False:
-        subprocess.run(cmd, shell=True,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
     elif verbose is True:
         subprocess.run(cmd, shell=True)
-    
+
     end_time = datetime.now()
     diff_time = (start_time - end_time).total_seconds()
 
     print(" ")
     print(" ")
-    print(" Process Completed in %.2f seconds" % round(diff_time,2))
+    print(" Process Completed in %.2f seconds" % round(diff_time, 2))
     print("% ---------------------------------------------------------------- %")
+
 
 def exec_parashell(cmd_list):
     num_cores = mp.cpu_count()
     processing_pool = mp.Pool(num_cores)
     processing_pool.map(os.system, (cmd for cmd in cmd_list))
+
 
 def get_prefix(src, verbose=False):
     """Removes extension and gets the prefix from Path
@@ -75,6 +80,7 @@ def get_prefix(src, verbose=False):
             print(" ")
         src_prefix = src.with_suffix('').with_suffix('')
     return src_prefix
+
 
 def make_dir(src, verbose=False):
     """Makes a directory with the name of the file
@@ -153,6 +159,7 @@ def make_identity_matrix(out="identity.mat"):
         out = out.as_posix()
     np.savetxt(out, np.identity(4, dtype=int), fmt="%i", delimiter=" ")
 
+
 def make_checkerboard(size=16):
     """[summary]
 
@@ -163,26 +170,30 @@ def make_checkerboard(size=16):
         [type]: [description]
     """
 
-    checkerboard = np.zeros((size,size),dtype=int)
-    checkerboard[1::2,::2] = 1
-    checkerboard[::2,1::2] = 1
+    checkerboard = np.zeros((size, size), dtype=int)
+    checkerboard[1::2, ::2] = 1
+    checkerboard[::2, 1::2] = 1
     checker_size = checkerboard.shape[0]
-    
-    return checkerboard,checker_size
 
-def make_montage(input_file_path,slice_range=np.arange(13,22)):
-    input_nii=nib.load(input_file_path.as_posix())
+    return checkerboard, checker_size
+
+
+def make_montage(input_file_path, slice_range=np.arange(13, 22)):
+    input_nii = nib.load(input_file_path.as_posix())
     input_nii_data = input_nii.get_fdata()
-    
-    data_subset=np.zeros([len(slice_range),input_nii_data.shape[0],input_nii_data.shape[1]])
-    
-    for idx in range(0,len(slice_range)):
-        data_subset[idx,:,:]=ndimage.rotate(input_nii_data[:,:,slice_range[idx]],90)
-    
+
+    data_subset = np.zeros(
+        [len(slice_range), input_nii_data.shape[0], input_nii_data.shape[1]])
+
+    for idx in range(0, len(slice_range)):
+        data_subset[idx, :, :] = ndimage.rotate(
+            input_nii_data[:, :, slice_range[idx]], 90)
+
     data_subset_montage = util.montage(data_subset)
     data_subset_size = data_subset.shape
     return data_subset_montage, data_subset_size
 
-def plot_montage(input_image,colour,title=):
-    fig, ax = plt.subplots(figsize=(50,15))
-    ax.imshow(input_image,cmap=colour)
+
+def plot_montage(input_image, colour, title=):
+    fig, ax = plt.subplots(figsize=(50, 15))
+    ax.imshow(input_image, cmap=colour)

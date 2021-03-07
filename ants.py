@@ -4,276 +4,299 @@ Python scripts for ANTs command-line utilities
 """
 import os
 import sys
+import misc
 import shutil
 import subprocess
 import numpy as np
 from pathlib import Path
 import multiprocessing as mp
 
-def resample_image(input_file_path, resolution=0.3, verbose=False, sim=False):
-    """Resamples an image to a given resolution isotropic.
+def ants_resample(input_file_path, resolution=0.3, interp="spline",verbose=False, sim=False):
+    """Resamples an image to a given isotropic resolution.
 
     Args:
         input_file_path (PosixPath): Path to input file
         resolution (float, optional): Resolution to resample to. Defaults to 0.3.
+        interp (str, optional): "spline" or "sinc". Defaults to "spline". 
         verbose (bool, optional): Prints loads of stuff to terminal. Defaults to False.
     """
-    def get_prefix(src):
-        """Removes prefix from Path file
+    out_file_prefix = misc.get_prefix(input_file_path)
+    res_str = str(resolution).replace(".","p")
+    out_file_path = Path(str(out_file_prefix.as_posix() + "_"+res_str+"_"+"iso.nii.gz")) 
+    
+    if interp == "spline":
+        interpolator = str("4[5]")
+    elif interp == "sinc":
+        interpolator = str("3['l']")
 
-        Args:
-            src (PosixPath): path to the input file
+    main_cmd = "ResampleImage 3 " + \
+        input_file_path.as_posix() + " " + \
+        out_file_path.as_posix() + " " + \
+        str(resolution)+"x"+str(resolution)+"x"+str(resolution) + " " + \
+        "0 " + interpolator + " 2"
 
-        Returns:
-            PosixPath: path to the input file without extension
-        """
-        check_suffix = src.suffixes
-        if len(check_suffix) == 1:
-            src_prefix = src.with_suffix('')
-        elif len(check_suffix) == 2:
-            src_prefix = src.with_suffix('').with_suffix('')
-        return src_prefix
-
-    if type(input_file_path) is str:
-        print("Requires Input as PosixPath")
-
-    out_file_prefix = get_prefix(input_file_path)
-    out_file_path = Path(out_file_prefix.as_posix() + "_0p3_iso.nii.gz")
-
-    main_cmd = "${ANTSPATH}/ResampleImage " + \
-        "3 " + \
-        input_file_path.as_posix() + \
-        " " + \
-        out_file_path.as_posix() + \
-        " " + \
-        str(resolution)+"x"+str(resolution)+"x"+str(resolution) + \
-        " " + \
-        "0 4[5] 2 "
-
-    print(" ")
-    print(" ")
-    print("% ---------------------------------------------------------------- %")
-    print("                         Executing process                          ")
-    print("% ---------------------------------------------------------------- %")
-    print(" ")
-    print(" ")
-    print(main_cmd)
-    if sim is False:
-        if verbose is False:
-            subprocess.run(main_cmd, shell=True,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        elif verbose is True:
-            subprocess.run(main_cmd, shell=True)
-    print(" ")
-    print(" ")
-    print("% ---------------------------------------------------------------- %")
-    print("                         Process Completed                          ")
-    print("% ---------------------------------------------------------------- %")
+    misc.exec_shell(cmd=main_cmd)
     return out_file_path
 
 
-def build_template(input_file_list, outprefix, verbose=False, sim=False):
+def ants_build_template(input_file_list, out_prefix, iters=4,verbose=False, sim=False):
     """Runs ANTs template construction command.
 
     Args:
         input_file_list (list): List of files to be made template out of
         out_prefix (str): Output name prefix
-        verbose (bool, optional): Prints loads of stuff to terminal. Defaults to False.
+        iters (int, optional): Number of iterations. Defaults to 4.
+        verbose (bool, optional): Print verbose output. Defaults to False.
     """
-    def list_to_string(in_list):
-        """Convert list to string, by joining all item in list.
-
-        Args:
-            in_list (list): input list
-            seperator (str, optional): delimiter. Defaults to ' '.
-
-        Returns:
-            string: Returns the concatenated string
-        """
-        full_str = ' '.join([str(elem.as_posix()) for elem in in_list])
-        return full_str
-
+    num_cores = mp.cpu_count()
+        
     if type(input_file_list) is str:
         print("Requires Input as List")
 
-    input_file_string = list_to_string(in_list=input_file_list)
+    input_file_string = misc.list_to_string(in_list=input_file_list)
 
-    main_cmd = "${ANTSPATH}/antsMultivariateTemplateConstruction2.sh " + \
-        "-d 3 -a 0 -i 4 -k 1 -f 4x2x1 -s 2x1x0vox " + \
-        "-q 30x20x4 -t SyN -m CC[2] -c 2 -j 34 " + \
-        "-o " + outprefix + \
-        " " + \
+    main_cmd = "antsMultivariateTemplateConstruction2.sh " + \
+        "-d 3 -a 0 " + \
+        "-k 1 -f 4x2x1 -s 4x2x0vox " + \
+        "-q 50x20x5 -t SyN -m CC[2] -c 2 " + \
+        "-j " + num_cores + " " + \
+        "-i " + iters + " " + \
+        "-o " + out_prefix + " " + \
         input_file_string
 
-    print(" ")
-    print(" ")
-    print("% ---------------------------------------------------------------- %")
-    print("                         Executing process                          ")
-    print("% ---------------------------------------------------------------- %")
-    print(" ")
-    print(" ")
-    print(main_cmd)
-    if sim is False:
-        if verbose is False:
-            subprocess.run(main_cmd, shell=True,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        elif verbose is True:
-            subprocess.run(main_cmd, shell=True)
-    print(" ")
-    print(" ")
-    print("% ---------------------------------------------------------------- %")
-    print("                         Process Completed                          ")
-    print("% ---------------------------------------------------------------- %")
+    misc.exec_shell(cmd=main_cmd)
 
-
-def apply_transform(ref_file_path, trg_file_path, mat_file_path, warp_file_path=None, verbose=False, sim=False):
-    """Apply estimated transformations using ANTs
+def ants_reslice(fixed_file_path, moving_file_path, mat_file_path, warp_file_path=None, interp="spline", verbose=False):
+    """Apply transformations using antsApplyTransforms
 
     Args:
-        ref_file_path (PosixPath): Path to the reference image space
-        trg_file_path (PosixPath): Path to data being transformed
-        mat_file_path (PosixPath): Path to affine matrix 
-        warp_file_path (PosixPath, optional): Path to warp. Defaults to None.
-        verbose (bool, optional): [description]. Defaults to False.
-        sim (bool, optional): [description]. Defaults to False.
+        fixed_file_path (PosixPath): Path to the fixed image
+        moving_file_path (PosixPath): Path to the moving image
+        mat_file_path (PosixPath): Path to the affine matrix
+        warp_file_path (PosixPath, optional): Path to the warp. Defaults to None.
+        interp (str, optional): "spline" or "sinc". Defaults to "spline".
+        verbose (bool, optional): Print verbose output. Defaults to False.
+    
+    TO-DO: Accomodate many mats and warps as lists 
     """
-    def get_prefix(src):
-        """Removes prefix from Path file
+    if type(fixed_file_path) is str:
+        fixed_file_path=Path(fixed_file_path)
+    elif type(moving_file_path) is str:
+        moving_file_path=Path(moving_file_path)
 
-        Args:
-            src (PosixPath): path to the input file
+    out_file_prefix = misc.get_prefix(moving_file_path)
+    out_file_path = Path(out_file_prefix.as_posix() + "_antsWarped.nii.gz")
 
-        Returns:
-            PosixPath: path to the input file without extension
-        """
-        check_suffix = src.suffixes
-        if len(check_suffix) == 1:
-            src_prefix = src.with_suffix('')
-        elif len(check_suffix) == 2:
-            src_prefix = src.with_suffix('').with_suffix('')
-        return src_prefix
-
-    if type(ref_file_path) is str:
-        print("Requires Input as PosixPath")
-    elif type(trg_file_path) is str:
-        print("Requires Input as PosixPath")
-
-    out_file_prefix = get_prefix(trg_file_path)
-    out_file_path = Path(out_file_prefix.as_posix() + "_Warped.nii.gz")
-
+    if interp == "spline":
+        interpolator = str("BSpline[5]")
+    elif interp == "sinc":
+        interpolator = str("LanczosWindowedSinc")
+    
     if warp_file_path is None:
-        main_cmd = "${ANTSPATH}/antsApplyTransforms " + \
-            "-d 3 -u float -n BSpline[5] " + \
-            "-r " + ref_file_path.as_posix() + \
-            " " + \
-            "-i " + trg_file_path.as_posix() + \
-            " " + \
-            "-o " + out_file_path.as_posix() + \
-            " " + \
+        main_cmd = "antsApplyTransforms " + \
+            "-d 3 -u float " + \
+            "-n " + interpolator + " " + \
+            "-r " + fixed_file_path.as_posix() + " " + \
+            "-i " + moving_file_path.as_posix() + " " + \
+            "-o " + out_file_path.as_posix() + " " + \
             "-t " + mat_file_path.as_posix()
+        misc.exec_shell(cmd=main_cmd)
     else:
-        main_cmd = "${ANTSPATH}/antsApplyTransforms " + \
-            "-d 3 -u float -n BSpline[5] " + \
-            "-r " + ref_file_path.as_posix() + \
-            " " + \
-            "-i " + trg_file_path.as_posix() + \
-            " " + \
-            "-o " + out_file_path.as_posix() + \
-            " " + \
-            "-t " + warp_file_path.as_posix() + \
-            " " + \
+        main_cmd = "antsApplyTransforms " + \
+            "-d 3 -u float " + \
+            "-n " + interpolator + " " + \
+            "-r " + fixed_file_path.as_posix() + " " + \
+            "-i " + moving_file_path.as_posix() + " " + \
+            "-o " + out_file_path.as_posix() + " " + \
+            "-t " + warp_file_path.as_posix() + " " + \
             "-t " + mat_file_path.as_posix()
-
-    print(" ")
-    print(" ")
-    print("% ---------------------------------------------------------------- %")
-    print("                         Executing process                          ")
-    print("% ---------------------------------------------------------------- %")
-    print(" ")
-    print(" ")
-    print(main_cmd)
-    if sim is False:
-        if verbose is False:
-            subprocess.run(main_cmd, shell=True,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        elif verbose is True:
-            subprocess.run(main_cmd, shell=True)
-    print(" ")
-    print(" ")
-    print("% ---------------------------------------------------------------- %")
-    print("                         Process Completed                          ")
-    print("% ---------------------------------------------------------------- %")
+        misc.exec_shell(cmd=main_cmd)
     return out_file_path
 
 
-def average_images(input_file_list, verbose=False):
-    """Averages a list of given images.
+def ants_average(input_file_list, norm=0,verbose=False):
+    """Calculate average using AverageImages
 
     Args:
         input_file_list (list): List of files to be averaged
-        verbose (bool, optional): Prints loads of stuff to terminal. Defaults to False.
+        norm (int, optional):   0 --> no normalisation
+                                1 --> divide by mean + sharpening
+                                2 --> divide by mean 
+                                Defaults to 0.
+        verbose (bool, optional): Print verbose output. Defaults to False.
     """
-    def get_prefix(src):
-        """Removes prefix from Path file
-
-        Args:
-            src (PosixPath): path to the input file
-
-        Returns:
-            PosixPath: path to the input file without extension
-        """
-        check_suffix = src.suffixes
-        if len(check_suffix) == 1:
-            src_prefix = src.with_suffix('')
-        elif len(check_suffix) == 2:
-            src_prefix = src.with_suffix('').with_suffix('')
-        return src_prefix
-
-    def list_to_string(in_list):
-        """Convert list to string, by joining all item in list.
-
-        Args:
-            in_list (list): input list
-            seperator (str, optional): delimiter. Defaults to ' '.
-
-        Returns:
-            string: Returns the concatenated string
-        """
-        full_str = ' '.join([str(elem.as_posix()) for elem in in_list])
-        return full_str
 
     if type(input_file_list) is str:
         print("Requires Input as List")
 
-    input_file_string = list_to_string(in_list=input_file_list)
+    input_file_string = misc.list_to_string(in_list=input_file_list)
 
-    out_file_prefix = get_prefix(input_file_list[0])
-    out_file_path = Path(out_file_prefix.as_posix() + "_Avg.nii.gz")
+    out_file_prefix = misc.get_prefix(input_file_list[0])
+    out_file_path = Path(out_file_prefix.as_posix() + "_antsAvg.nii.gz")
 
-    main_cmd = "${ANTSPATH}/AverageImages " + \
-        "3 " + \
-        out_file_path.as_posix() + \
-        " " + \
-        "0" + \
-        " " + \
+    main_cmd = "AverageImages 3 " + \
+        out_file_path.as_posix() + " " + \
+        int(norm) + " " + \
         input_file_string
 
-    print(" ")
-    print(" ")
-    print("% ---------------------------------------------------------------- %")
-    print("                         Executing process                          ")
-    print("% ---------------------------------------------------------------- %")
-    print(" ")
-    print(" ")
-    print(main_cmd)
-    if verbose is False:
-        subprocess.run(main_cmd, shell=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    elif verbose is True:
-        subprocess.run(main_cmd, shell=True)
-    print(" ")
-    print(" ")
-    print("% ---------------------------------------------------------------- %")
-    print("                         Process Completed                          ")
-    print("% ---------------------------------------------------------------- %")
+    misc.exec_shell(cmd=main_cmd)
+
+def ants_imath(input_file_path,operation=None,parameters=None):
+    """Image operations using ImageMath
+
+    Args:
+        input_file_path (PosixPath): Path to the input file.
+        operation (str, optional):  "anismooth"
+                                    "close"
+                                    "contours"
+                                    "dilate"
+                                    "erode"
+                                    "fillholes"
+                                    "largest"
+                                    "mask"
+                                    "negative"
+                                    "open"
+                                    "projmax"
+                                    "projmin"
+                                    "projsum"
+                                    "rescale"                                    
+                                    "truncate"                                    
+                                    Defaults to None.
+        parameters (str, optional): "anismooth" --> iters conductance
+                                                    10    0.25
+                                    "close"     --> voxels
+                                                    2
+                                    "contours"
+                                    "dilate"    --> voxels
+                                                    2
+                                    "erode"     --> voxels
+                                                    2
+                                    "fillholes"
+                                    "largest"
+                                    "mask"      --> % of mean
+                                                    1.2
+                                    "negative"
+                                    "open"      --> voxels
+                                                    2
+                                    "projmax"   --> axis
+                                                    3
+                                    "projmin"   --> axis
+                                                    3
+                                    "projsum"   --> axis
+                                                    3
+                                    "rescale"   --> min max
+                                                    0   4000                                    
+                                    "truncate"  --> %min %max
+                                                    0.01 0.99                                    
+                                    Defaults to None.
+    """
+    if type(input_file_path) is str:
+        input_file_path=Path(input_file_path)
+
+    out_file_prefix = misc.get_prefix(input_file_path)
+    
+    if operation == "anismooth":
+        operation = "PeronaMalik"
+        if parameters is None:
+            parameters="10 0.25"
+    elif operation == "close":
+        operation = "MC"
+        if parameters is None:
+            parameters="2"               
+    elif operation == "contours":
+        operation = "ExtractContours"
+        if parameters is None:
+            parameters="1"
+    elif operation == "dilate":
+        operation = "MD"
+        if parameters is None:
+            parameters="2"
+    elif operation == "erode":
+        operation = "ME"
+        if parameters is None:
+            parameters="2"
+    elif operation == "fillholes":
+        operation = "FillHoles"
+        if parameters is None:
+            parameters="2"
+    elif operation == "largest":
+        operation = "GetLargestComponent"
+    elif operation == "mask":
+        operation = "ThresholdAtMean"
+        if parameters is None:
+            parameters="1.2"
+    elif operation == "negative":
+        operation = "Neg"
+    elif operation == "open":
+        operation = "MO"
+        if parameters is None:
+            parameters="2"
+    elif operation == "projmax":
+        operation = "Project"
+        if parameters is None:
+            parameters="3"
+        parameters = parameters + " 1"
+    elif operation == "projmin":
+        operation = "Project"
+        if parameters is None:
+            parameters="3"
+        parameters = parameters + " 2"
+    elif operation == "projsum":
+        operation = "Project"
+        if parameters is None:
+            parameters="3"
+        parameters = parameters + " 0"
+    elif operation == "rescale":
+        operation = "RescaleImage"
+        if parameters is None:
+            parameters="0 4000"
+    elif operation == "truncate":
+        operation = "TruncateImageIntensity"
+        parameters = "0.01 0.99"
+
+    out_file_path=Path(out_file_prefix.as_posix()+"_"+operation+".nii.gz")
+    
+    main_cmd = "ImageMath 3 " + \
+        out_file_path.as_posix() + " " + \
+        operation + " " + \
+        input_file_path.as_posix() + " " + \
+        parameters
+    
+    misc.exec_shell(cmd=main_cmd)    
+
     return out_file_path
+
+def ants_n4(input_file_path,mask_file_path=None,verbose=False):
+    """[summary]
+
+    Args:
+        input_file_path (PosixPath): Path to the input file.
+        mask_file_path (PosixPath, optional): Path to the mask file. Defaults to None.
+        verbose (bool, optional): Print verbose output. Defaults to False.
+    """
+    
+    if type(input_file_path) is str:
+        input_file_path=Path(input_file_path)
+
+    out_file_prefix = misc.get_prefix(input_file_path)
+    n4_out_file_path = Path(out_file_prefix.as_posix() + "_antsN4corr.nii.gz")
+    bias_out_file_path = Path(out_file_prefix.as_posix() + "_antsN4bias.nii.gz")
+    
+    trunc_in_file_path = ants_imath(input_file_path,operation="truncate")
+    
+    if mask_file_path is not None:
+        main_cmd = "N4BiasFieldCorrection " + \
+                "-d 3 -s 2 " + \
+                "-x " + mask_file_path.as_posix() + " " + \
+                "-i " + trunc_in_file_path.as_posix() + " " + \
+                "-o [" + n4_out_file_path.as_posix() + \
+                    ", " + bias_out_file_path.as_posix() + "]"
+
+        misc.exec_shell(cmd=main_cmd)
+    else:
+        main_cmd = "N4BiasFieldCorrection " + \
+                "-d 3 -s 2 " + \
+                "-i " + input_file_path.as_posix() + " " + \
+                "-o [" + n4_out_file_path.as_posix() + \
+                    ", " + bias_out_file_path.as_posix() + "]"
+        misc.exec_shell(cmd=main_cmd)
