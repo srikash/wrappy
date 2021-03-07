@@ -105,628 +105,456 @@ def fsl_register(fixed_file_path, moving_file_path, transform="rigid", cost="NMI
         
     misc.exec_shell(cmd=main_cmd)
 
-
-def fsl_realign(input_file_list, ref_file_path=None):
-    """[summary]
+def fsl_realign(input_file_list, fixed_file_path=None):
+    """Run flirt in parallel for 3D rigid realignment
 
     Args:
-        input_file_list ([type]): [description]
-        ref_file_path ([type], optional): [description]. Defaults to None.
+        input_file_list (PosixPath): List of files for realignment
+        fixed_file_path (PosixPath, optional): Path to a reference file. Defaults to None.
     """
     
     realign_cmd_list = list()
-    if ref_file_path is None:
+    if fixed_file_path is None:
         for vol_num in range(1, len(input_file_list)):
             cmd = fsl_register(fixed_file_path=input_file_list[0], 
                                moving_file_path=input_file_list[vol_num])
             realign_cmd_list.append(cmd)
-        misc.exec_parashell(moco_cmd_list)
+        misc.exec_parashell(realign_cmd_list)
     else:
         for vol_num in range(len(input_file_list)):
-            cmd = fsl_register(fixed_file_path=ref_file_path, 
+            cmd = fsl_register(fixed_file_path=fixed_file_path, 
                         moving_file_path=input_file_list[vol_num])
             realign_cmd_list.append(cmd)
         misc.exec_parashell(realign_cmd_list)
 
-def fsl_avscale(mat_file_path):
-    """[summary]
+def fsl_reslice(fixed_file_path, moving_file_path, mat_file_path, interp="spline"):
+    """Apply estimated transformations using flirt
 
     Args:
-        mat_file_path ([type]): [description]
+        fixed_file_path (PosixPath): Path to fixed file.
+        moving_file_path (PosixPath): Path to moving file.
+        mat_file_path (PosixPath): Path to affine matrix.
+        interp (str, optional): "spline" or "sinc". Defaults to "spline".
     """
-    main_cmd = "avscale --allparams " + \
-        str(mat_file_path)
+    out_file_prefix = misc.get_prefix(moving_file_path)
+
+    main_cmd = "flirt " + \
+        "-applyxfm" + " " + \
+        "-interp " + interp + " " + \
+        "-init " + mat_file_path.as_posix() + " " + \
+        "-ref " + fixed_file_path.as_posix() + " " + \
+        "-in " + moving_file_path.as_posix() + " " + \
+        "-out " + out_file_prefix.as_posix() + "_fslWarped.nii.gz"
+
+    misc.exec_shell(cmd=main_cmd)
+    
+def fsl_invertmat(mat_file_path):
+    """Invert flirt matrix
+
+    Args:
+        mat_file_path (PosixPath): Path to affine matrix.
+    """
+    out_file_prefix = misc.get_prefix(mat_file_path)
+
+    main_cmd = "convert_xfm " + \
+        "-omat " + \
+        out_file_prefix.as_posix() + "_inverse.mat" + " " + \
+        "-inverse " + \
+        mat_file_path.as_posix()
+
+    misc.exec_shell(cmd=main_cmd)
+
+def fsl_avscale(mat_file_path):
+    """Wrap avscale. Obtain rotation and translation info from FSL mat file.
+
+    Args:
+        mat_file_path (PosixPath): [description]
+    """
+    main_cmd = "avscale --allparams " + mat_file_path.as_posix()
+
     mat_file_output = subprocess.check_output(main_cmd, shell=True)
+
     return mat_file_output
 
-def fsl_Tmean(src, verbose=False):
-    """Wrapper for fslmaths command
+def fsl_Tmean(input_file_path):
+    """Calculate temporal mean
     Args:
-        src (PosixPath): path to the input files
-    Returns:
-        PosixPath: path to the output files without extension
+        input_file_path (PosixPath): Path to the input file
     """
-    if verbose is True:
-        print("%---------------------------------------%")
-        print("++ Calculating Tmean")
-        print("%---------------------------------------%")
-    if type(src) is str:
-        src = Path(src)
-    out = get_prefix(src)
-    out_string = str(out)+"_Tmean.nii.gz"
+    out = misc.get_prefix(input_file_path)
+    out_string = out.as_posix()+"_fslTmean.nii.gz"
 
     main_cmd = "fslmaths " + \
-        str(src) + \
-        " " + \
-        "-Tmean " + \
+        input_file_path.as_posix() + " " + \
+        "-Tmean" + " " + \
         out_string
 
-    run_cmd = main_cmd
-    if verbose is True:
-        print("++++ Running fslmaths ++++")
-        print(run_cmd)
-        print("%---------------------------------------%")
-    subprocess.run(run_cmd, shell=True)
+    misc.exec_shell(cmd=main_cmd)
+    
     return Path(out_string)
 
-
-def calc_Tstd(src, verbose=False):
-    """Wrapper for fslmaths command
+def fsl_Tstd(input_file_path):
+    """Calculate temporal standard deviation
     Args:
-        src (PosixPath): path to the input files
-    Returns:
-        PosixPath: path to the output files without extension
+        input_file_path (PosixPath): Path to the input file
     """
-    if verbose is True:
-        print("%---------------------------------------%")
-        print("++ Calculating Tstd")
-        print("%---------------------------------------%")
-    if type(src) is str:
-        src = Path(src)
-    out = get_prefix(src)
-    out_string = str(out)+"_Tstd.nii.gz"
+    out = misc.get_prefix(input_file_path)
+    out_string = out.as_posix()+"_fslTstd.nii.gz"
 
     main_cmd = "fslmaths " + \
-        str(src) + \
-        " " + \
-        "-Tstd " + \
+        input_file_path.as_posix() + " " + \
+        "-Tstd" + " " + \
         out_string
 
-    run_cmd = main_cmd
-    if verbose is True:
-        print("++++ Running fslmaths ++++")
-        print(run_cmd)
-        print("%---------------------------------------%")
-    subprocess.run(run_cmd, shell=True)
+    misc.exec_shell(cmd=main_cmd)
+    
     return Path(out_string)
 
-
-def calc_Tsnr(src, verbose=False):
-    """Wrapper for fslmaths command
+def fsl_Tsnr(input_file_path):
+    """Calculate temporal SNR after calculating Tmean and Tstd
     Args:
-        src (PosixPath): path to the input files
+        input_file_path (PosixPath): Path to the input file
     """
-    if verbose is True:
-        print("%---------------------------------------%")
-        print("++ Calculating Tmean")
-        print("%---------------------------------------%")
-    if type(src) is str:
-        src = Path(src)
+    out = misc.get_prefix(input_file_path)
+    out_string = out.as_posix()+"_fslTsnr.nii.gz"
 
-    out = get_prefix(src)
-    calc_Tmean(src)
-    calc_Tstd(src)
-    if verbose is True:
-        print("%---------------------------------------%")
-        print("++ Calculating calc_Tsnr")
-        print("%---------------------------------------%")
-    main_cmd = "fslmaths " + \
-        str(out)+"_Tmean.nii.gz" + \
-        " " + \
-        "-div " + \
-        str(out)+"_Tstd.nii.gz" + \
-        " " + \
-        str(out)+"_Tsnr.nii.gz"
+    fsl_Tmean(input_file_path=input_file_path)
+    fsl_Tstd(input_file_path=input_file_path)
+    
+    main_cmd = "fslmaths" + " " + \
+        out.as_posix() + "_fslTmean.nii.gz" + " " + \
+        "-div" + " " + \
+        out.as_posix() + "_fslTstd.nii.gz" + " " + \
+        out_string
 
-    run_cmd = main_cmd
-    if verbose is True:
-        print("++++ Running fslmaths ++++")
-        print(run_cmd)
-        print("%---------------------------------------%")
-    subprocess.run(run_cmd, shell=True)
+    misc.exec_shell(cmd=main_cmd)
+    
+    return Path(out_string)
 
-def brainmask(src):
-    """[summary]
+def fsl_bet(input_file_path, frac=0.25):
+    """Wrap bet, basic settings
 
     Args:
-        src ([type]): [description]
+        input_file_path (PosixPath): Path to the input file
+        frac (float, optional): Fractional threshold (larger mask < 0.5 < smaller mask). Defaults to 0.25.
     """
-    if type(src) is str:
-        src = Path(src)
-    out = get_prefix(src)
+    if type(input_file_path) is str:
+        src = Path(input_file_path)
+    out = misc.get_prefix(input_file_path)
     
     main_cmd = "bet " + \
-        str(src) + \
-        " " + \
-        str(out) + "_brain" + \
-        " "
-    post_cmd = "-f 0.25 " + \
-        "-m "
+        input_file_path.as_posix() + " " + \
+        out.as_posix() + "_fslBet" + " " + \
+        "-f 0.25 -m"
 
-    run_cmd = main_cmd+post_cmd
-    subprocess.run(run_cmd, shell=True)
+    misc.exec_shell(cmd=main_cmd)
 
-def topup(imain, datain, config, verbose=False):
-    """[summary]
+def fsl_topup(input_file_path, topup_parameters, topup_config=None, verbose=False):
+    """Wrap topup
 
     Args:
-        imain ([type]): [description]
-        datain ([type]): [description]
-        config ([type]): [description]
+        input_file_path (PosixPath): Path to 4D file to estimate topup
+        topup_parameters (PosixPath): Path to topup parameters file
+        topup_config (PosixPath, optional): Path to topup configuration. Defaults to topup default.
     """
-    if verbose is True:
-        print("%---------------------------------------%")
-        print("++ Distortion-correction using TOPUP")
-        print("%---------------------------------------%")
-    if type(imain) is str:
-        imain = Path(imain)
-    out = get_prefix(imain)
+    if type(input_file_path) is str:
+        input_file_path = Path(input_file_path)
+    out = misc.get_prefix(input_file_path)
 
-    if config is not None:
-        pre_cmd = "topup " + \
-            "--config=" + \
-            str(config) + \
-            " " + \
-            "--out=" + \
-            str(out)+"_topup "
+    if topup_config is not None:
+        main_cmd = "topup " + \
+            "--config=" + topup_config.as_posix() + " " + \
+            "--out=" + out.as_posix() +"_fslTopup" + " " + \
+            "--imain=" + input_file_path.as_posix() + " " + \
+            "--datain=" + topup_parameters.as_posix() + " " + \
+            "--fout=" + out.as_posix() + "_fslTopup_fieldmap_in_Hz.nii.gz" + " " + \
+            "--iout=" + out.as_posix() + "_fslTopup_unWarped.nii.gz"
+        misc.exec_shell(cmd=main_cmd)
     else:
-        pre_cmd = "topup " + \
-            "--out=" + \
-            str(out)+"_topup "
+        main_cmd = "topup " + \
+            "--out=" + out.as_posix() +"_fslTopup" + " " + \
+            "--imain=" + input_file_path.as_posix() + " " + \
+            "--datain=" + topup_parameters.as_posix() + " " + \
+            "--fout=" + out.as_posix() + "_fslTopup_fieldmap_in_Hz.nii.gz" + " " + \
+            "--iout=" + out.as_posix() + "_fslTopup_unWarped.nii.gz"
+        misc.exec_shell(cmd=main_cmd)
 
-    main_cmd = "--imain=" + \
-        str(imain) + \
-        " " + \
-        "--datain=" + \
-        str(datain) + \
-        " " + \
-        "--fout=" + \
-        str(out)+"_topup_fmap_in_Hz.nii.gz " + \
-        "--iout=" + \
-        str(out)+"_topup_unwarped.nii.gz"
-
-    run_cmd = pre_cmd+main_cmd
-    if verbose is True:
-        print("++++ Running TOPUP ++++")
-        print(run_cmd)
-    subprocess.run(run_cmd, shell=True)
-
-    cmd_fmap_mag = "fslmaths " + \
-        str(out)+"_topup_unwarped.nii.gz " + \
+    # Get fieldmap magnitude
+    main_cmd = "fslmaths " + \
+        out.as_posix() + "_fslTopup_unWarped.nii.gz" + " " + \
         "-Tmean " + \
-        str(out)+"_topup_fmap_mag.nii.gz"
-    if verbose is True:
-        print("++++ Calculating fieldmap mag ++++")
-        print(cmd_fmap_mag)
-    subprocess.run(cmd_fmap_mag, shell=True)
+        out.as_posix() + "_fslTopup_fieldmap_mag.nii.gz"
     
-    brainmask(src=Path(str(out)+"_topup_fmap_mag.nii.gz"))
+    misc.exec_shell(cmd=main_cmd)
+
+    # Bet fieldmap magnitude
+    fsl_bet(input_file_path=Path(out.as_posix() + "_fslTopup_fieldmap_mag.nii.gz"))
     
-    cmd_fmap_rad_per_s = "fslmaths " + \
-    str(out)+"_topup_fmap_in_Hz.nii.gz " + \
-    "-mul 6.28319" + \
-    str(out)+"_topup_fmap_in_rad_per_s.nii.gz"
+    # Rescale fieldmap from Hz to radians/sec
+    main_cmd = "fslmaths " + \
+        out.as_posix() + "_fslTopup_fieldmap_in_Hz.nii.gz" + " " + \
+        "-mul 6.28319" + " " + \
+        out.as_posix() + "_fslTopup_fieldmap_in_radPersec.nii.gz"
     
-    if verbose is True:
-        print("++++ Converting fieldmap to rad/s ++++")
-        print(cmd_fmap_rad_per_s)
-    subprocess.run(cmd_fmap_rad_per_s, shell=True)    
+    misc.exec_shell(cmd=main_cmd)
 
-    cmd_fmap_rescale = "fslmaths " + \
-        str(out)+"_topup_fmap_in_Hz.nii.gz " + \
-        "-mul 6.28319 " + \
-        str(out)+"_topup_fmap_in_rad_per_s.nii.gz"
-
-    if verbose is True:
-        print("++++ Rescaling fieldmap to rad/s ++++")
-        print(cmd_fmap_rescale)
-        print("%---------------------------------------%")
-    subprocess.run(cmd_fmap_rescale, shell=True)
-
-    output_dict={"fmap_hz": str(out)+"_topup_fmap_in_Hz.nii.gz",
-                "fmap_rad_per_s": str(out)+"_topup_fmap_in_rad_per_s.nii.gz",
-                "fmap_mag": str(out)+"_topup_fmap_mag.nii.gz",
-                "fmap_mag_brain": str(out)+"_topup_fmap_mag_brain.nii.gz",
-                "fmap_mag_brain_mask": str(out)+"_topup_fmap_mag_brain_mask.nii.gz"}
+    output_dict={"fieldmap_Hz": out.as_posix() + "_fslTopup_fieldmap_in_Hz.nii.gz",
+                "fieldmap_radPersec": out.as_posix() + "_fslTopup_fieldmap_in_radPersec.nii.gz",
+                "fieldmap_mag": out.as_posix() +"_fslTopup_fieldmap_mag.nii.gz",
+                "fieldmap_mag_brain": out.as_posix() + "_fslTopup_fieldmap_mag_fslBet.nii.gz",
+                "fieldmap_mag_brain_mask": out.as_posix() + "_fslTopup_fieldmap_mag_fslBet_mask.nii.gz"}
     return output_dict
 
-def calc_surrDiff(src, first="t", tr=1.0, remean=True, surr_avg=False, verbose=False):
+def fsl_surrDiff(input_file_path, order="tc", tr=1.0, add_mean=True, bold=False, verbose=False):
     """Do surround subtraction the FSL way command
+    
     Args:
-        src (PosixPath): path to the input files
+        input_file_path (PosixPath): Path to input file.
+        order (str, optional): "tc" or "ct". Defaults to "tc".
+        tr (float, optional): Volume TR. Defaults to 1.0.
+        add_mean (bool, optional): Rescale. Defaults to True.
+        bold (bool, optional): Also calculate BOLD timeseries. Defaults to False.
+        verbose (bool, optional): Print verbose output. Defaults to False.
     """
-    if verbose is True:
-        print("%---------------------------------------%")
-        print("++ Calculating Surround Difference")
-        print("%---------------------------------------%")
-    if type(src) is str:
-        src = Path(src)
-    src_prefix = get_prefix(src)
+    if type(input_file_path) is str:
+        input_file_path = Path(input_file_path)
+    out_prefix = misc.get_prefix(input_file_path)
 
-    if first is "c":
-        print("++++ First image is control ++++")
+    if order=="ct":
         invert = "-mul -1.0"
 
-    make_dir(src)
-    split4d(src)
-    src_prefix = get_prefix(src)
+    misc.make_dir(input_file_path=input_file_path)
 
-    even_filelist = list(src_prefix.glob("vol_*[02468].nii.gz"))
+    fsl_split(input_file_path=input_file_path)
+
+    even_filelist = list(out_prefix.glob("vol_*[02468].nii.gz"))
     even_filelist.sort()
-    even_filelist = list_to_string(even_filelist)
-    odd_filelist = list(src_prefix.glob("vol_*[13579].nii.gz"))
+    even_filelist = misc.list_to_string(even_filelist)
+    odd_filelist = list(out_prefix.glob("vol_*[13579].nii.gz"))
     odd_filelist.sort()
-    odd_filelist = list_to_string(odd_filelist)
+    odd_filelist = misc.list_to_string(odd_filelist)
 
+    # For when the timeseries has odd number of TRs
     if len(even_filelist) != len(odd_filelist):
-        print("++++ Ignoring last timepoint ++++")
         even_filelist = even_filelist[:-1]
-        print(" ++ Merging to 4D file")
-        merge3d(src=even_filelist,
-                out=str(src_prefix)+"/even.nii.gz",
+        fsl_merge(input_file_list=even_filelist,
+                out_file_path=out_prefix.as_posix() + "/even.nii.gz",
                 tr=1.0)
     else:
-        print(" ++ Merging to 4D file")
-        merge3d(src=even_filelist,
-                out=str(src_prefix)+"/even.nii.gz",
+        fsl_merge(input_file_list=even_filelist,
+                out_file_path=out_prefix.as_posix() + "/even.nii.gz",
                 tr=1.0)
-    merge3d(src=odd_filelist,
-            out=str(src_prefix)+"/odd.nii.gz",
+
+    fsl_merge(input_file_list=odd_filelist,
+            out_file_path=out_prefix.as_posix() + "/odd.nii.gz",
             tr=1.0)
 
     def temp_shift(infile, outfile, shift):
-        main_cmd = "slicetimer " + \
-            "-i " + \
-            str(infile) + \
-            " " + \
-            "-o " + \
-            str(outfile) + \
-            " " + \
-            "--tglobal=" + \
-            str(shift)
-        run_cmd = main_cmd
-        subprocess.run(run_cmd, shell=True)
+        """Temporal interpolation using slicetimer
 
-    temp_shift(infile=str(src_prefix)+"/odd.nii.gz",
-               outfile=str(src_prefix)+"/odd_earlier.nii.gz",
+        Args:
+            infile (str): Path to input file.
+            outfile (str): Path to output file.
+            shift (float): shift factor.
+        """
+        main_cmd = "slicetimer " + \
+            "-i " + infile.as_posix() + " " + \
+            "-o " + outfile.as_posix() + " " + \
+            "--tglobal=" + str(shift)
+
+        misc.exec_shell(cmd=main_cmd)
+
+    temp_shift(infile=out_prefix.as_posix() + "/odd.nii.gz",
+               outfile=out_prefix.as_posix() + "/odd_earlier.nii.gz",
                shift=0.25)
-    temp_shift(infile=str(src_prefix)+"/odd.nii.gz",
-               outfile=str(src_prefix)+"/odd_later.nii.gz",
+    temp_shift(infile=out_prefix.as_posix() + "/odd.nii.gz",
+               outfile=out_prefix.as_posix() + "/odd_later.nii.gz",
                shift=-0.25)
-    temp_shift(infile=str(src_prefix)+"/even.nii.gz",
-               outfile=str(src_prefix)+"/even_earlier.nii.gz",
+    temp_shift(infile=out_prefix.as_posix() + "/even.nii.gz",
+               outfile=out_prefix.as_posix() + "/even_earlier.nii.gz",
                shift=0.25)
-    temp_shift(infile=str(src_prefix)+"/even.nii.gz",
-               outfile=str(src_prefix)+"/even_later.nii.gz",
+    temp_shift(infile=out_prefix.as_posix() + "/even.nii.gz",
+               outfile=out_prefix.as_posix() + "/even_later.nii.gz",
                shift=0.75)
 
     main_cmd = "fslmaths " + \
-        str(src_prefix)+"/odd_later.nii.gz" + \
-        " " + \
+        out_prefix.as_posix() + "/odd_later.nii.gz" + " " + \
         "-sub " + \
-        str(src_prefix)+"/even_earlier.nii.gz" + \
-        " " + \
-        str(src_prefix)+"/even_to_odd.nii.gz"
-    run_cmd = main_cmd
-    subprocess.run(run_cmd, shell=True)
+        out_prefix.as_posix() + "/even_earlier.nii.gz" + " " + \
+        out_prefix.as_posix() + "/even_to_odd.nii.gz"
+
+    misc.exec_shell(cmd=main_cmd)
 
     main_cmd = "fslmaths " + \
-        str(src_prefix)+"/odd_earlier.nii.gz" + \
-        " " + \
+        out_prefix.as_posix() + "/odd_earlier.nii.gz" + " " + \
         "-sub " + \
-        str(src_prefix)+"/even_later.nii.gz" + \
-        " " + \
-        str(src_prefix)+"/odd_to_even.nii.gz"
-    run_cmd = main_cmd
-    subprocess.run(run_cmd, shell=True)
+        out_prefix.as_posix() + "/even_later.nii.gz" + " " + \
+        out_prefix.as_posix() + "/odd_to_even.nii.gz"
 
-    surr_diff_calc_path = Path(str(src_prefix)+"/surr_diff")
-    make_dir(src=surr_diff_calc_path)
+    misc.exec_shell(cmd=main_cmd)
 
-    even_sub_path = Path(str(surr_diff_calc_path)+"/e_")
-    split4d(src=Path(str(src_prefix)+"/even_to_odd.nii.gz"),
-            out=even_sub_path)
-    even_sub_filelist = list(surr_diff_calc_path.glob("e_*.nii.gz"))
+    surr_diff_out_path = Path(out_prefix.as_posix() + "/surrDiff")
+    misc.make_dir(input_file_path=surr_diff_out_path)
+
+    even_sub_path = Path(surr_diff_out_path.as_posix() + "/e_")
+    fsl_split(input_file_path=Path(out_prefix.as_posix() + "/even_to_odd.nii.gz"),
+            out_prefix=even_sub_path)
+    even_sub_filelist = list(surr_diff_out_path.glob("e_*.nii.gz"))
     even_sub_filelist.sort()
 
-    odd_sub_path = Path(str(surr_diff_calc_path)+"/o_")
-    split4d(src=Path(str(src_prefix)+"/odd_to_even.nii.gz"),
-            out=odd_sub_path)
-    odd_sub_filelist = list(surr_diff_calc_path.glob("o_*.nii.gz"))
+    odd_sub_path = Path(surr_diff_out_path.as_posix() + "/o_")
+    fsl_split(input_file_path=Path(out_prefix.as_posix() + "/odd_to_even.nii.gz"),
+            out_prefix=odd_sub_path)
+    odd_sub_filelist = list(surr_diff_out_path.glob("o_*.nii.gz"))
     odd_sub_filelist.sort()
 
     subtracted_fulllist = even_sub_filelist + odd_sub_filelist
     subtracted_fulllist[::2] = even_sub_filelist
     subtracted_fulllist[1::2] = odd_sub_filelist
 
-    subtracted_fulllist_merge = list_to_string(in_list=subtracted_fulllist)
-    merge3d(src=subtracted_fulllist_merge,
-            out=str(src_prefix)+"_moCorr_surrDiff.nii.gz",
+    subtracted_fulllist_merge = misc.list_to_string(in_list=subtracted_fulllist)
+    fsl_merge(input_file_list=subtracted_fulllist_merge,
+            out_file_path=out_prefix.as_posix() + "_surrDiff.nii.gz",
             tr=2.861)
-    calc_Tmean(src=Path(str(src_prefix)+"_moCorr_surrDiff.nii.gz"))
+    fsl_Tmean(input_file_path=Path(out_prefix.as_posix() + "_surrDiff.nii.gz"))
 
-    if remean is True:
-        mean_out = calc_Tmean(src)
+    if add_mean is True:
+        mean_out = fsl_Tmean(input_file_path)
+        
         main_cmd = "fslmaths " + \
-            str(src_prefix)+"_moCorr_surrDiff.nii.gz" + \
-            " " + \
+            out_prefix.as_posix() + "_surrDiff.nii.gz" + " " + \
             "-add " + \
-            str(src_prefix)+"_Tmean.nii.gz" + \
-            " " + \
-            str(src_prefix)+"_moCorr_surrDiff_plusMean.nii.gz"
-        run_cmd = main_cmd
-        subprocess.run(run_cmd, shell=True)
+            out_prefix.as_posix() + "_fslTmean.nii.gz" + " " + \
+            out_prefix.as_posix() + "_surrDiff_plusMean.nii.gz"
+        misc.exec_shell(cmd=main_cmd)
 
-    remove_dir(surr_diff_calc_path)
+    misc.remove_dir(surr_diff_out_path)
 
-    if surr_avg is True:
+    if bold is True:
         main_cmd = "fslmaths " + \
-            str(src_prefix)+"/odd_later.nii.gz" + \
-            " " + \
+            out_prefix.as_posix() + "/odd_later.nii.gz" + " " + \
             "-add " + \
-            str(src_prefix)+"/even_earlier.nii.gz" + \
-            " " + \
+            out_prefix.as_posix() + "/even_earlier.nii.gz" + " " + \
             "-div 2 " + \
-            str(src_prefix)+"/even_to_odd.nii.gz"
-        run_cmd = main_cmd
-        subprocess.run(run_cmd, shell=True)
+            out_prefix.as_posix() + "/even_to_odd.nii.gz"
+        misc.exec_shell(cmd=main_cmd)
 
         main_cmd = "fslmaths " + \
-            str(src_prefix)+"/odd_earlier.nii.gz" + \
-            " " + \
+            out_prefix.as_posix() + "/odd_earlier.nii.gz" + " " + \
             "-add " + \
-            str(src_prefix)+"/even_later.nii.gz" + \
-            " " + \
+            out_prefix.as_posix() + "/even_later.nii.gz" + " " + \
             "-div 2 " + \
-            str(src_prefix)+"/odd_to_even.nii.gz"
-        run_cmd = main_cmd
-        subprocess.run(run_cmd, shell=True)
+            out_prefix.as_posix() + "/odd_to_even.nii.gz"
+        misc.exec_shell(cmd=main_cmd)
 
-        surr_avg_calc_path = Path(str(src_prefix)+"/surr_avg")
-        make_dir(src=surr_avg_calc_path)
+        surr_avg_out_path = Path(out_prefix.as_posix() + "/surrAvg")
+        misc.make_dir(input_file_path=surr_avg_out_path)
 
-        even_sub_path = Path(str(surr_avg_calc_path)+"/e_")
-        split4d(src=Path(str(src_prefix)+"/even_to_odd.nii.gz"),
-                out=even_sub_path)
-        even_sub_filelist = list(surr_avg_calc_path.glob("e_*.nii.gz"))
+        even_sub_path = Path(surr_avg_out_path.as_posix() + "/e_")
+        fsl_split(input_file_path=Path(surr_avg_out_path.as_posix() + "/even_to_odd.nii.gz"),
+                out_prefix=even_sub_path)
+        even_sub_filelist = list(surr_avg_out_path.glob("e_*.nii.gz"))
         even_sub_filelist.sort()
 
-        odd_sub_path = Path(str(surr_avg_calc_path)+"/o_")
-        split4d(src=Path(str(src_prefix)+"/odd_to_even.nii.gz"),
-                out=odd_sub_path)
-        odd_sub_filelist = list(surr_avg_calc_path.glob("o_*.nii.gz"))
+        odd_sub_path = Path(surr_avg_out_path.as_posix() + "/o_")
+        fsl_split(input_file_path=Path(surr_avg_out_path.as_posix() + "/odd_to_even.nii.gz"),
+                out_prefix=odd_sub_path)
+        odd_sub_filelist = list(surr_avg_out_path.glob("o_*.nii.gz"))
         odd_sub_filelist.sort()
 
         averaged_fulllist = even_sub_filelist + odd_sub_filelist
         averaged_fulllist[::2] = even_sub_filelist
         averaged_fulllist[1::2] = odd_sub_filelist
 
-        averaged_fulllist_merge = list_to_string(in_list=averaged_fulllist)
-        merge3d(src=averaged_fulllist_merge,
-                out=str(src_prefix)+"_moCorr_surrAvg.nii.gz",
-                tr=2.861)
-        calc_Tmean(src=Path(str(src_prefix)+"_moCorr_surrAvg.nii.gz"))
+        averaged_fulllist_merge = misc.list_to_string(in_list=averaged_fulllist)
+        fsl_merge(input_file_list=averaged_fulllist_merge,
+                out_file_path=out_prefix.as_posix() + "_surrAvg.nii.gz",
+                tr=1.0)
+        fsl_Tmean(input_file_path=Path(out_prefix.as_posix() + "_surrAvg.nii.gz"))
 
-        remove_dir(surr_avg_calc_path)
+        misc.remove_dir(surr_avg_out_path)
 
-    remove_files(src=src_prefix,
+    misc.remove_files(src=out_prefix,
                  pattern="vol*.nii.gz")
-    remove_files(src=src_prefix,
+    misc.remove_files(src=out_prefix,
                  pattern="odd*.nii.gz")
-    remove_files(src=src_prefix,
+    misc.remove_files(src=out_prefix,
                  pattern="even*.nii.gz")
 
-def despike_fmap(fmap,fmap_mask):
-    """[summary]
+
+def fsl_bbr(fixed_file_path,moving_file_path,wm_seg_path,interp="spline",init_file_path=None):
+    """Register using BBR
 
     Args:
-        fmap ([type]): [description]
-        fmap_mask ([type]): [description]
-    """
-    if type(fmap) is str:
-        fmap = Path(fmap)
-    if type(fmap_mask) is str:
-        fmap_mask = Path(fmap_mask)
+        fixed_file_path ([type]): Path to fixed file.
+        moving_file_path ([type]): Path to moving file.
+        wm_seg_path ([type]): Path to WM Seg file.
+        interp (str, optional): "spline" or "sinc". Defaults to "spline".
+        init_file_path (PosixPath, optional): Path to init mat file. Defaults to None.
+    """    
 
-    fmap_prefix = get_prefix(fmap)
-    fmap_mask_prefix = get_prefix(fmap_mask)
+    out_file_prefix = misc.get_prefix(moving_file_path)
+    if init_file_path is not None:
+        main_cmd = "flirt -nosearch -noresample -noresampblur " + \
+            "-schedule ${FSLDIR}/etc/flirtsch/bbr.sch -cost bbr " + \
+            "-interp " + interp + " " + \
+            "-init " + init_file_path.as_posix() + " " + \
+            "-ref " + fixed_file_path.as_posix() + " " + \
+            "-wmseg " + wm_seg_path.as_posix() + " " + \
+            "-in " + moving_file_path.as_posix() + " " + \
+            "-omat " + out_file_prefix.as_posix() + "_fslBBR.mat"  + " " + \
+            "-out " + out_file_prefix.as_posix() + "_fslbbWarped.nii.gz"
+        misc.exec_shell(cmd=main_cmd)
+    else:
+        main_cmd = "flirt -nosearch -noresample -noresampblur " + \
+            "-schedule ${FSLDIR}/etc/flirtsch/bbr.sch -cost bbr " + \
+            "-interp " + interp + " " + \
+            "-ref " + fixed_file_path.as_posix() + " " + \
+            "-wmseg " + wm_seg_path.as_posix() + " " + \
+            "-in " + moving_file_path.as_posix() + " " + \
+            "-omat " + out_file_prefix.as_posix() + "_fslBBR.mat"  + " " + \
+            "-out " + out_file_prefix.as_posix() + "_fslbbWarped.nii.gz"
+        misc.exec_shell(cmd=main_cmd)
+
+def fsl_despike(input_file_path, mask_file_path):
+    """Despike fieldmap
+
+    Args:
+        input_file_path (PosixPath): Path to input file.
+        mask_file_path (PosixPath): Path to mask file.
+    """
+    if type(input_file_path) is str:
+        input_file_path = Path(input_file_path)
+    if type(mask_file_path) is str:
+        mask_file_path = Path(mask_file_path)
+
+    out_prefix = misc.get_prefix(input_file_path)
+    out_mask_prefix = misc.get_prefix(mask_file_path)
     
     main_cmd = "fslmaths " + \
-        str(fmap_mask) + \
-        " " + \
+        mask_file_path.as_posix() + " " + \
         "-ero " + \
-        str(fmap_mask_prefix)+"_ero.nii.gz"
-    run_cmd = main_cmd
-    subprocess.run(run_cmd, shell=True)
+        out_mask_prefix.as_posix() + "_ero.nii.gz"
+
+    misc.exec_shell(cmd=main_cmd)
     
     main_cmd = "fugue " + \
-        "--loadfmap=" + \
-        str(fmap) + \
-        " " + \
-        "--savefmap=" + \
-        str(fmap_prefix)+"_filt.nii.gz" + \
-        " " + \
-        "--mask=" + \
-        str(fmap_mask_prefix)+"_ero.nii.gz" + \
-        " "
-    post_cmd = "--despike " + \
-        "--despikethreshold=2.1"
-    run_cmd = main_cmd+post_cmd
-    subprocess.run(run_cmd, shell=True)
+        "--loadfmap=" + input_file_path.as_posix() + " " + \
+        "--savefmap=" + out_prefix.as_posix() + "_filt.nii.gz" + " " + \
+        "--mask=" + out_mask_prefix.as_posix() + "_ero.nii.gz" + " " + \
+        "--despike" + " " + "--despikethreshold=2.1"
+    misc.exec_shell(cmd=main_cmd)
 
     main_cmd = "fslmaths " + \
-        str(fmap) + \
-        " " + \
+        input_file_path.as_posix() + " " + \
         "-sub " + \
-        str(fmap_prefix)+"_filt.nii.gz" + \
-        " " + \
-        "-mas " + \
-        str(fmap_mask) + \
-        " " + \
-        "-add " + \
-        str(fmap_prefix)+"_filt.nii.gz" + \
-        " " + \
-        str(fmap_prefix)+"_despiked.nii.gz"
-    run_cmd = main_cmd
-    subprocess.run(run_cmd, shell=True)
+        out_prefix.as_posix() + "_filt.nii.gz" + " " + \
+        "-mas " + mask_file_path.as_posix() + " " + \
+        "-add " + out_prefix.as_posix() + "_filt.nii.gz" + " " + \
+        out_prefix.as_posix() + "_despiked.nii.gz"
+    misc.exec_shell(cmd=main_cmd)
     
-    file_rm=Path(str(fmap_prefix)+"_filt.nii.gz")
+    file_rm=Path(out_prefix.as_posix() + "_filt.nii.gz")
     file_rm.unlink()
-    file_rm=Path(str(fmap_mask_prefix)+"_ero.nii.gz")
+    file_rm=Path(out_mask_prefix.as_posix() + "_ero.nii.gz")
     file_rm.unlink()
-
-def flirt_transform(ref_file_path, trg_file_path, mat_file_path, verbose=False, sim=False):
-    """Apply estimated transformations using flirt
-
-    Args:
-        ref_file_path (PosixPath): Path to the reference image space
-        trg_file_path (PosixPath): Path to data being transformed
-        mat_file_path (PosixPath): Path to affine matrix 
-        verbose (bool, optional): [description]. Defaults to False.
-        sim (bool, optional): [description]. Defaults to False.
-    """
-    def get_prefix(src):
-        """Removes prefix from Path file
-
-        Args:
-            src (PosixPath): path to the input file
-
-        Returns:
-            PosixPath: path to the input file without extension
-        """
-        check_suffix = src.suffixes
-        if len(check_suffix) == 1:
-            src_prefix = src.with_suffix('')
-        elif len(check_suffix) == 2:
-            src_prefix = src.with_suffix('').with_suffix('')
-        return src_prefix
-
-    if type(ref_file_path) is str:
-        print("Requires Input as PosixPath")
-    elif type(trg_file_path) is str:
-        print("Requires Input as PosixPath")
-
-    out_file_prefix = get_prefix(trg_file_path)
-
-    main_cmd = "flirt -interp sinc -applyxfm " + \
-            "-init " + mat_file_path.as_posix() + " " + \
-            "-ref " + ref_file_path.as_posix() + " " + \
-            "-in " + trg_file_path.as_posix() + " " + \
-            "-out " + out_file_prefix.as_posix() + "_flirtWarped.nii.gz"
-
-    print(" ")
-    print(" ")
-    print("% ---------------------------------------------------------------- %")
-    print("                         Executing process                          ")
-    print("% ---------------------------------------------------------------- %")
-    print(" ")
-    print(" ")
-    print(main_cmd)
-    if sim is False:
-        if verbose is False:
-            subprocess.run(main_cmd, shell=True,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        elif verbose is True:
-            subprocess.run(main_cmd, shell=True)
-    print(" ")
-    print(" ")
-    print("% ---------------------------------------------------------------- %")
-    print("                         Process Completed                          ")
-    print("% ---------------------------------------------------------------- %")
-
-def flirt_bbregister(rage_file_path,wm_seg_path,tse_file_path,mat_file_path,verbose=False):
-    """Register the TSE to hires MP2RAGE using an init matrix & BBR,
-       invert and apply to hires MP2RAGE to transform to TSE space
-
-    Args:
-        rage_file_path ([type]): Path to hires MP2RAGE file
-        wm_seg_path ([type]): Path to WM Seg from hires MP2RAGE file
-        tse_file_path ([type]): Path to T2w TSE file
-        mat_file_path ([type]): Path to init mat file
-        verbose (bool, optional): Prints loads of stuff to terminal. Defaults to False.
-    """    
-    def get_prefix(src):
-        """Removes prefix from Path file
-
-        Args:
-            src (PosixPath): path to the input file
-
-        Returns:
-            PosixPath: path to the input file without extension
-        """
-        check_suffix = src.suffixes
-        if len(check_suffix) == 1:
-            src_prefix = src.with_suffix('')
-        elif len(check_suffix) == 2:
-            src_prefix = src.with_suffix('').with_suffix('')
-        return src_prefix
-
-    out_file_prefix = get_prefix(tse_file_path)
-    
-    main_cmd_0 = "flirt -interp sinc -nosearch -noresample -noresampblur " + \
-        "-schedule ${FSLDIR}/etc/flirtsch/bbr.sch -cost bbr -minsampling 0.3 " + \
-        "-init " + mat_file_path.as_posix() + " " + \
-        "-ref " + rage_file_path.as_posix() + " " + \
-        "-wmseg " + wm_seg_path.as_posix() + " " + \
-        "-in " + tse_file_path.as_posix() + " " + \
-        "-omat " + out_file_prefix.as_posix() + "_fsl_bbReg.mat"  + " " + \
-        "-out " + out_file_prefix.as_posix() + "_fsl_bbReg.nii.gz"
-
-    print(" ")
-    print(" ")
-    print("% ---------------------------------------------------------------- %")
-    print("                         Executing process                          ")
-    print("% ---------------------------------------------------------------- %")
-    print(" ")
-    print(" ")
-    print(main_cmd_0)
-    if verbose is False:
-        subprocess.run(main_cmd_0, shell=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    elif verbose is True:
-        subprocess.run(main_cmd_0, shell=True)
-    print(" ")
-    print(" ")
-    print("% ---------------------------------------------------------------- %")
-    print("                         Process Completed                          ")
-    print("% ---------------------------------------------------------------- %")
-    
-    main_cmd_1 = "convert_xfm " + \
-    "-omat " + out_file_prefix.as_posix() + "_fsl_bbReg_inverse.mat" + \
-    " " + \
-    "-inverse " + out_file_prefix.as_posix() + "_fsl_bbReg.mat"
-
-    print(" ")
-    print(" ")
-    print("% ---------------------------------------------------------------- %")
-    print("                         Executing process                          ")
-    print("% ---------------------------------------------------------------- %")
-    print(" ")
-    print(" ")
-    print(main_cmd_1)
-    if verbose is False:
-        subprocess.run(main_cmd_1, shell=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    elif verbose is True:
-        subprocess.run(main_cmd_1, shell=True)
-    print(" ")
-    print(" ")
-    print("% ---------------------------------------------------------------- %")
-    print("                         Process Completed                          ")
-    print("% ---------------------------------------------------------------- %")
-    
-    flirt_transform(ref_file_path=tse_file_path,
-                    trg_file_path=rage_file_path,
-                    mat_file_path=Path(out_file_prefix.as_posix() + "_fsl_bbReg_inverse.mat"))
-    
-    

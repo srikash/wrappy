@@ -55,72 +55,48 @@ def exec_parashell(cmd_list):
     processing_pool.map(os.system, (cmd for cmd in cmd_list))
 
 
-def get_prefix(src, verbose=False):
+def get_prefix(input_file_path, verbose=False):
     """Removes extension and gets the prefix from Path
 
     Args:
-        src (PosixPath): path to the input file
+        input_file_path (PosixPath): Path to the input file
 
     Returns:
         PosixPath: path to the input file without extension
     """
-    if verbose is True:
-        print(" ")
-        print("Checking File Extension")
-        print(" ")
-    check_suffix = src.suffixes
+    check_suffix = input_file_path.suffixes
     if len(check_suffix) == 1:
-        if verbose is True:
-            print("File has a NIFTI suffix.")
-            print(" ")
-        src_prefix = src.with_suffix('')
+        input_file_path_prefix = input_file_path.with_suffix('')
     elif len(check_suffix) == 2:
         if verbose is True:
             print("File has a NIFTI_GZ suffix.")
             print(" ")
-        src_prefix = src.with_suffix('').with_suffix('')
-    return src_prefix
+        input_file_path_prefix = input_file_path.with_suffix('').with_suffix('')
+    return input_file_path_prefix
 
 
-def make_dir(src, verbose=False):
+def make_dir(input_file_path, verbose=False):
     """Makes a directory with the name of the file
 
     Args:
-        src (PosixPath): path to the input file
+        input_file_path (PosixPath): Path to the input file
     """
-    if verbose is True:
-        print(" ")
-        print("Making Directory")
-        print(" ")
-    if len(src.suffixes) != 0:
-        newfolder_path = get_prefix(src)
+    if len(input_file_path.suffixes) != 0:
+        newfolder_path = get_prefix(input_file_path)
     else:
-        newfolder_path = src
-    if verbose is True:
-        print("Directory Name : ")
-        print("     "+str(newfolder_path))
-        print(" ")
+        newfolder_path = input_file_path
     newfolder_path.mkdir(parents=True, exist_ok=True)
 
-
-def remove_dir(src, verbose=False):
+def remove_dir(input_file_path, verbose=False):
     """Remove a directory with the name of the file
 
     Args:
-        src (PosixPath): path to the input file
+        input_file_path (PosixPath): path to the input file
     """
-    if verbose is True:
-        print(" ")
-        print("Removing Directory")
-        print(" ")
-    if len(src.suffixes) != 0:
-        newfolder_path = get_prefix(src)
+    if len(input_file_path.suffixes) != 0:
+        newfolder_path = get_prefix(input_file_path)
     else:
-        newfolder_path = src
-    if verbose is True:
-        print("Directory Name : ")
-        print("     "+str(newfolder_path))
-        print(" ")
+        newfolder_path = input_file_path
     shutil.rmtree(newfolder_path)
 
 
