@@ -300,3 +300,51 @@ def ants_n4(input_file_path,mask_file_path=None,verbose=False):
                 "-o [" + n4_out_file_path.as_posix() + \
                     ", " + bias_out_file_path.as_posix() + "]"
         misc.exec_shell(cmd=main_cmd)
+
+def ants_kmeans(input_file_path,mask_file_path,classes=3,verbose=False):
+    """Do K-means segmentation using ANTs
+
+    Args:
+        input_file_path (PosixPath): Path to the input file
+        mask_file_path (PosixPath): Path to the mask file.
+        classes (int, optional): [description]. Defaults to 3.
+        verbose (bool, optional): [description]. Defaults to False.
+    """
+    if type(input_file_path) is str:
+        input_file_path=Path(input_file_path)
+
+    out_file_prefix = misc.get_prefix(input_file_path)
+    classes_out_file_path = Path(out_file_prefix.as_posix() + "_antsClasses.nii.gz")
+    posteriors_out_file_path = Path(out_file_prefix.as_posix() + "_antsPosteriors.nii.gz")
+    
+    main_cmd = "Atropos -d 3 -c 10" + " " + \
+        "-i KMeans[" + str(classes) +"]" + " " + \
+        "-a " + input_file_path.as_posix() + " " + \
+        "-x " + mask_file_path.as_posix() + " " + \
+        "-o [" + classes_out_file_path.as_posix() + \
+            ", " + posteriors_out_file_path.as_posix() + "]"
+    misc.exec_shell(cmd=main_cmd)
+
+def ants_otsu(input_file_path,mask_file_path,classes=3,verbose=False):
+    """Do Otsu segmentation using ANTs
+
+    Args:
+        input_file_path (PosixPath): Path to the input file
+        mask_file_path (PosixPath): Path to the mask file.
+        classes (int, optional): [description]. Defaults to 3.
+        verbose (bool, optional): [description]. Defaults to False.
+    """
+    if type(input_file_path) is str:
+        input_file_path=Path(input_file_path)
+
+    out_file_prefix = misc.get_prefix(input_file_path)
+    classes_out_file_path = Path(out_file_prefix.as_posix() + "_antsClasses.nii.gz")
+    posteriors_out_file_path = Path(out_file_prefix.as_posix() + "_antsPosteriors.nii.gz")
+    
+    main_cmd = "Atropos -d 3 -c 10" + " " + \
+        "-i Otsu[" + str(classes) +"]" + " " + \
+        "-a " + input_file_path.as_posix() + " " + \
+        "-x " + mask_file_path.as_posix() + " " + \
+        "-o [" + classes_out_file_path.as_posix() + \
+            ", " + posteriors_out_file_path.as_posix() + "]"
+    misc.exec_shell(cmd=main_cmd)
