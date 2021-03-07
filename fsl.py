@@ -4,154 +4,142 @@ Python scripts for FSL command-line utilities
 """
 import os
 import sys
+import misc
 import shutil
 import subprocess
 import numpy as np
 from pathlib import Path
 import multiprocessing as mp
 
-def split4d(src, out=None, verbose=False):
-    """Wrapper for fslsplit command
+def fsl_split(input_file_path, out_prefix=None, verbose=False):
+    """Wraps fslsplit
     Args:
-        src (PosixPath): path to the input file
+        input_file_path (PosixPath): Path to the input file
     Returns:
         PosixPath: path to the output files without extension
     """
-    if verbose is True:
-        print("%---------------------------------------%")
-        print("++ Splitting 4D file to 3D files")
-        print("%---------------------------------------%")
-    make_dir(src)
-    if out is None:
-        out = get_prefix(src)
-        out = out / "vol_"
-    main_cmd = "fslsplit " +  \
-        str(src) + \
-        " " + \
-        str(out)
-    post_cmd = " -t"
+    
+    misc.make_dir(input_file_path)
+    
+    if out_prefix is None:
+        out_prefix = misc.get_prefix(input_file_path)
+        out_prefix = out_prefix / "vol_"
+    
+    main_cmd = "fslsplit " + \
+        input_file_path.as_posix() + " " + \
+        out_prefix + " " + \
+        "-t"
 
-    run_cmd = main_cmd+post_cmd
-    if verbose is True:
-        print("++++ Running fslsplit ")
-        print(run_cmd)
-        print("%---------------------------------------%")
-    subprocess.run(run_cmd, shell=True)
-    return out
+    misc.exec_shell(cmd=main_cmd)
+
+    return out_prefix
 
 
-def merge3d(src, out, tr=1.0, verbose=False):
-    """Wrapper for fslmerge command
+def fsl_merge(input_file_list, out_file_path, tr=1.0, verbose=False):
+    """Wraps fslmerge
     Args:
-        src (PosixPath): path to the input files
-        out (PosixPath): path to the output file
+        input_file_list (list): List of input files
+        out_file_path (PosixPath): Path to the output file
         tr (float, optional): TR of the data. Defaults to 1.0.
     """
-    if verbose is True:
-        print("%---------------------------------------%")
-        print("++ Combining 3D files to 4D")
-        print("%---------------------------------------%")
-
-    pre_cmd = "fslmerge " + \
-        "-tr "
-    main_cmd = str(out) + \
-        " " + \
-        str(src) + \
-        " " + \
+    input_file_string = misc.list_to_string(in_list=input_file_list)
+    
+    main_cmd = "fslmerge -tr " + \
+        out_file_path.as_posix() + " " + \
+        input_file_string + " " + \
         str(tr)
 
-    run_cmd = pre_cmd+main_cmd
-    if verbose is True:
-        print("++++ Running fslmerge ++++")
-        print(run_cmd)
-        print("%---------------------------------------%")
-    subprocess.run(run_cmd, shell=True)
+    misc.exec_shell(cmd=main_cmd)
 
 
-def flirt(ref, src, dof=6, sch=None, log=0.0, verbose=False):
-    """Wrapper for flirt command
+def fsl_register(fixed_file_path, moving_file_path, transform="rigid", cost="NMI",init=None):
+    """[summary]
+
     Args:
-        ref (PosixPath): path to the reference file
-        src (PosixPath): path to the input file
-        log (float, optional): log command out. Defaults to 0.0.
-    Returns:
-        cmd: command out
-    """
-    if verbose is True:
-        print("%---------------------------------------%")
-        print("++ Running FLIRT with custom defaults")
-        print("%---------------------------------------%")
-    if type(src) is str:
-        src = Path(src)
+        fixed_file_path ([type]): [description]
+        moving_file_path ([type]): [description]
+        transform (str, optional): [description]. Defaults to "rigid".
+        cost (str, optional): [description]. Defaults to "NMI".
+        init ([type], optional): [description]. Defaults to None.
 
-    out = get_prefix(src)
-    pre_cmd = "flirt " + \
-        "-cost normmi " + \
-        "-interp spline " + \
-        "-bins 512 " + \
-        "-dof " + str(dof) + \
-        " " + \
+    Returns:
+        [type]: [description]
+    """
+    out_file_prefix = misc.get_prefix(moving_file_path)
+
+    if transform == "rigid":
+        dof = 6
+    elif transform == "affine":
+        dof = 12
+
+    if cost == "NMI":
+        cost = str("normmi")
+    elif cost == "NC":
+        cost = str("normcorr")
+    elif cost == "CR":
+        cost = str("corratio")    
+
+    if init is None:
+        initialisation = " "
+    else:
+        initialisation = "-init " + init.as_posix() + " "
+
+    main_cmd = "flirt " + \
+        "-interp spline" + " " + \
+        "-bins 512" + " " + \
         "-noresample " + \
         "-noclamp " + \
         "-noresampblur " + \
-        "-nosearch "
+        "-nosearch " + \
+        "-cost " + cost + " " + \
+        "-dof " + str(dof) + " " + \
+        initialisation + \
+        "-ref" + " " + \
+        fixed_file_path.as_posix() + " " + \
+        "-in" + " " + \
+        moving_file_path.as_posix() + " " + \
+        "-out" + " " + \
+        out_file_prefix.as_posix() + "_fslWarped.nii.gz" + " " + \
+        "-omat" + " " + \
+        out_file_prefix.as_posix() + "_fsl.mat"
+        
+    misc.exec_shell(cmd=main_cmd)
 
-    if sch is not None:
-        main_cmd = "-sch " + \
-            str(sch) + \
-            "-ref " +  \
-            str(ref) + \
-            " " + \
-            "-in " + \
-            str(src) + \
-            " " + \
-            "-out " + \
-            str(out)+"_coreg.nii.gz " + \
-            "-omat " + \
-            str(out)+"_coreg.mat"
-        run_cmd = pre_cmd+main_cmd
+
+def fsl_realign(input_file_list, ref_file_path=None):
+    """[summary]
+
+    Args:
+        input_file_list ([type]): [description]
+        ref_file_path ([type], optional): [description]. Defaults to None.
+    """
+    
+    realign_cmd_list = list()
+    if ref_file_path is None:
+        for vol_num in range(1, len(input_file_list)):
+            cmd = fsl_register(fixed_file_path=input_file_list[0], 
+                               moving_file_path=input_file_list[vol_num])
+            realign_cmd_list.append(cmd)
+        misc.exec_parashell(moco_cmd_list)
     else:
-        main_cmd = "-ref " +  \
-            str(ref) + \
-            " " + \
-            "-in " + \
-            str(src) + \
-            " " + \
-            "-out " + \
-            str(out)+"_coreg.nii.gz " + \
-            "-omat " + \
-            str(out)+"_coreg.mat"
-        run_cmd = pre_cmd+main_cmd
-    if log == 1.0:
-        return run_cmd
-    else:
-        if verbose is True:
-            print("++++ Running FLIRT ++++")
-            print(run_cmd)
-            print("%---------------------------------------%")
-    subprocess.run(run_cmd, shell=True)
+        for vol_num in range(len(input_file_list)):
+            cmd = fsl_register(fixed_file_path=ref_file_path, 
+                        moving_file_path=input_file_list[vol_num])
+            realign_cmd_list.append(cmd)
+        misc.exec_parashell(realign_cmd_list)
 
+def fsl_avscale(mat_file_path):
+    """[summary]
 
-def mcflirt(file_list, ref_file=None):
-    moco_cmd_list = list()
-    if ref_file is None:
-        for vol_num in range(1, len(file_list)):
-            cmd = flirt(ref=file_list[0], src=file_list[vol_num], log=1.0)
-            moco_cmd_list.append(cmd)
-        exec_parashell(moco_cmd_list)
-    else:
-        for vol_num in range(len(file_list)):
-            cmd = flirt(ref=ref_file, src=file_list[vol_num], log=1.0)
-            moco_cmd_list.append(cmd)
-        exec_parashell(moco_cmd_list)
-
-def avscale(mat):
+    Args:
+        mat_file_path ([type]): [description]
+    """
     main_cmd = "avscale --allparams " + \
-        str(mat)
-    output = subprocess.check_output(main_cmd, shell=True)
-    return output
+        str(mat_file_path)
+    mat_file_output = subprocess.check_output(main_cmd, shell=True)
+    return mat_file_output
 
-def calc_Tmean(src, verbose=False):
+def fsl_Tmean(src, verbose=False):
     """Wrapper for fslmaths command
     Args:
         src (PosixPath): path to the input files
