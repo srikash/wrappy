@@ -10,7 +10,7 @@ import subprocess
 import numpy as np
 import nibabel as nib
 from nilearn import image
-from pathlib import Path
+from pathlib import Path, PurePath
 from scipy import ndimage
 import multiprocessing as mp
 from datetime import datetime
@@ -100,18 +100,23 @@ def remove_dir(input_file_path, verbose=False):
     shutil.rmtree(newfolder_path)
 
 
-def list_to_string(in_list):
-    """Convert list to string, by joining all item in list.
+def list_to_string(in_list,separator=' '):
+    """Convert list to string, by joining all items in list using
+        the chosen separator.
 
     Args:
         in_list (list): input list
-        seperator (str, optional): delimiter. Defaults to ' '.
+        separator (str, optional): delimiter. Defaults to ' '.
 
     Returns:
         string: Returns the concatenated string
     """
-    full_str = ' '.join([str(elem.as_posix()) for elem in in_list])
-    return full_str
+    if isinstance(in_list[0], PurePath):
+        full_str = separator.join([str(elem.as_posix()) for elem in in_list])
+        return full_str
+    else:
+        full_str = separator.join([str(elem) for elem in in_list])
+        return full_str
 
 
 def remove_files(src, pattern):

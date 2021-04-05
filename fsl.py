@@ -4,7 +4,6 @@ Python scripts for FSL command-line utilities
 """
 import os
 import sys
-# sys.path.append(os.getcwd())
 from . import misc
 import shutil
 import subprocess
