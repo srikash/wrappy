@@ -16,7 +16,7 @@ def gibbs_unring(input_file_path):
     out_file_prefix = misc.get_prefix(input_file_path)
 
     main_cmd = "mrdegibbs" + " " + \
-        input_file_path + " " + \
+        input_file_path.as_posix() + " " + \
         out_file_prefix.as_posix() + "_deG.nii.gz"
     misc.exec_shell(cmd=main_cmd)
 

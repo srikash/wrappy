@@ -20,7 +20,7 @@ def afni_getvols(input_file_path, list_of_volumes):
         list_of_volumes (list, int): list of timeries sub-volumes (Note: zero indexing)
     """
 
-    if list_of_volumes is list:
+    if type(list_of_volumes) is list:
         string_of_subvols = misc.list_to_string(in_list=list_of_volumes)
     else:
         string_of_subvols = list_of_volumes
@@ -31,7 +31,7 @@ def afni_getvols(input_file_path, list_of_volumes):
         "-overwrite" + " " + \
         "-prefix " + out_file_prefix.as_posix() + "_subvols.nii.gz" + " " + \
         "-expr a" + " " + \
-        "-a " + input_file_path.as_posix() + "[" + string_of_subvols + "]"
+        "-a " + input_file_path.as_posix() + "[" + str(string_of_subvols) + "]"
 
     misc.exec_shell(cmd=main_cmd)
 
