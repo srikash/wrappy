@@ -637,7 +637,8 @@ def fsl_despike(input_file_path, mask_file_path):
     file_rm = Path(out_mask_prefix.as_posix() + "_ero.nii.gz")
     file_rm.unlink()
 
-def fsl_eddy(input_file_path, bvecs_file, bvals_file, slspec_file, mask_file, topup_parameters, index_file, topup_out):
+
+def fsl_eddy(input_file_path, bvecs_file, bvals_file, slspec_file, mask_file, topup_parameters, index_file, topup_out, mt="gpu"):
     """Wrap eddy_cuda9.1
 
     Args:
@@ -649,21 +650,49 @@ def fsl_eddy(input_file_path, bvecs_file, bvals_file, slspec_file, mask_file, to
         topup_parameters (PosixPath): Path to topup parameters file
         index_file (PosixPath): Path to index file.
         topup_out (PosixPath, optional): Path to topup output prefix
+        mt (str, optional): controls multi-threading. Defaults to "gpu".
+                            can be: cpu, None
 
     """
     if type(input_file_path) is str:
         input_file_path = Path(input_file_path)
     out_prefix = misc.get_prefix(input_file_path)
 
-    main_cmd = "eddy_cuda9.1" + " " + \
-        "--imain=" + input_file_path.as_posix() + " " + \
-        "--bvecs=" + bvecs_file.as_posix() + " " + \
-        "--bvals=" + bvals_file.as_posix() + " " + \
-        "--slspec=" + slspec_file.as_posix() + " " + \
-        "--mask=" + mask_file.as_posix() + " " + \
-        "--acqp=" + topup_parameters.as_posix() + " " + \
-        "--index=" + index_file.as_posix() + " " + \
-        "--topup=" + topup_out.as_posix() + " " + \
-        "--out=" + out_prefix.as_posix() + "_fslEddy"
+    if mt == "gpu":
+        eddy_type = "eddy_cuda9.1"
+        main_cmd = eddy_type + " " + \
+            "--imain=" + input_file_path.as_posix() + " " + \
+            "--bvecs=" + bvecs_file.as_posix() + " " + \
+            "--bvals=" + bvals_file.as_posix() + " " + \
+            "--slspec=" + slspec_file.as_posix() + " " + \
+            "--mask=" + mask_file.as_posix() + " " + \
+            "--acqp=" + topup_parameters.as_posix() + " " + \
+            "--index=" + index_file.as_posix() + " " + \
+            "--topup=" + topup_out.as_posix() + " " + \
+            "--out=" + out_prefix.as_posix() + "_fslEddy"
+    elif mt == "cpu":
+        # CPU versions of eddy do not have slspec functionality
+        eddy_type = "eddy_openmp"
+        main_cmd = eddy_type + " " + \
+            "--imain=" + input_file_path.as_posix() + " " + \
+            "--bvecs=" + bvecs_file.as_posix() + " " + \
+            "--bvals=" + bvals_file.as_posix() + " " + \
+            "--mask=" + mask_file.as_posix() + " " + \
+            "--acqp=" + topup_parameters.as_posix() + " " + \
+            "--index=" + index_file.as_posix() + " " + \
+            "--topup=" + topup_out.as_posix() + " " + \
+            "--out=" + out_prefix.as_posix() + "_fslEddy"
+    else:
+        # CPU versions of eddy do not have slspec functionality
+        eddy_type = "eddy"
+        main_cmd = eddy_type + " " + \
+            "--imain=" + input_file_path.as_posix() + " " + \
+            "--bvecs=" + bvecs_file.as_posix() + " " + \
+            "--bvals=" + bvals_file.as_posix() + " " + \
+            "--mask=" + mask_file.as_posix() + " " + \
+            "--acqp=" + topup_parameters.as_posix() + " " + \
+            "--index=" + index_file.as_posix() + " " + \
+            "--topup=" + topup_out.as_posix() + " " + \
+            "--out=" + out_prefix.as_posix() + "_fslEddy"
 
     misc.exec_shell(cmd=main_cmd)
