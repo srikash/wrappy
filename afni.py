@@ -11,7 +11,8 @@ import numpy as np
 from pathlib import Path
 import multiprocessing as mp
 
-def afni_getvols(input_file_path,list_of_volumes):
+
+def afni_getvols(input_file_path, list_of_volumes):
     """Use AFNI to extract volumes from a timeseries
 
     Args:
@@ -23,7 +24,7 @@ def afni_getvols(input_file_path,list_of_volumes):
         string_of_subvols = misc.list_to_string(in_list=list_of_volumes)
     else:
         string_of_subvols = list_of_volumes
-        
+
     out_file_prefix = misc.get_prefix(input_file_path)
 
     main_cmd = "3dcalc" + " " + \
@@ -31,10 +32,11 @@ def afni_getvols(input_file_path,list_of_volumes):
         "-prefix " + out_file_prefix.as_posix() + "_subvols.nii.gz" + " " + \
         "-expr a" + " " + \
         "-a " + input_file_path.as_posix() + "[" + string_of_subvols + "]"
-        
+
     misc.exec_shell(cmd=main_cmd)
 
-def afni_Tstats(input_file_path,operation="mean"):
+
+def afni_Tstats(input_file_path, operation="mean"):
     """ Temporal statistics using 3dTstat
 
     Args:
@@ -46,17 +48,18 @@ def afni_Tstats(input_file_path,operation="mean"):
     Returns:
         PosixPath: Output file path
     """
-    
+
     out_file_prefix = misc.get_prefix(input_file_path)
     out_string = out_file_prefix.as_posix() + "_Tmean.nii.gz"
 
     main_cmd = "3dTstat" + " " + \
-    "-overwrite" + " " + \
-    "-prefix " + out_string + " " + \
-    "-" + operation + " " + input_file_path.as_posix()
-    
+        "-overwrite" + " " + \
+        "-prefix " + out_string + " " + \
+        "-" + operation + " " + input_file_path.as_posix()
+
     misc.exec_shell(cmd=main_cmd)
     return Path(out_string)
+
 
 def afni_volreg(input_file_path):
     """ Run 3dvolreg with some default parameters 
@@ -76,4 +79,3 @@ def afni_volreg(input_file_path):
         input_file_path.as_posix()
 
     misc.exec_shell(cmd=main_cmd)
-    
