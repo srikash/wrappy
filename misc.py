@@ -9,12 +9,15 @@ import platform
 import subprocess
 import numpy as np
 import nibabel as nib
+from nilearn import image
 from pathlib import Path
 from scipy import ndimage
 import multiprocessing as mp
-import datetime import datetime
+from datetime import datetime
 import matplotlib.pyplot as plt
+from nipype.interfaces import fsl
 from skimage import transform, util
+plt.rcParams.update({'figure.max_open_warning': 0})
 
 
 def exec_shell(cmd, verbose=False):
@@ -41,7 +44,7 @@ def exec_shell(cmd, verbose=False):
         subprocess.run(cmd, shell=True)
 
     end_time = datetime.now()
-    diff_time = (start_time - end_time).total_seconds()
+    diff_time = (end_time - start_time).total_seconds()
 
     print(" ")
     print(" ")
@@ -68,9 +71,6 @@ def get_prefix(input_file_path, verbose=False):
     if len(check_suffix) == 1:
         input_file_path_prefix = input_file_path.with_suffix('')
     elif len(check_suffix) == 2:
-        if verbose is True:
-            print("File has a NIFTI_GZ suffix.")
-            print(" ")
         input_file_path_prefix = input_file_path.with_suffix('').with_suffix('')
     return input_file_path_prefix
 
@@ -153,7 +153,6 @@ def make_checkerboard(size=16):
 
     return checkerboard, checker_size
 
-
 def make_montage(input_file_path, slice_range=np.arange(13, 22)):
     input_nii = nib.load(input_file_path.as_posix())
     input_nii_data = input_nii.get_fdata()
@@ -169,7 +168,96 @@ def make_montage(input_file_path, slice_range=np.arange(13, 22)):
     data_subset_size = data_subset.shape
     return data_subset_montage, data_subset_size
 
-
-def plot_montage(input_image, colour, title=):
+def plot_montage(input_image, colour, title="Figure"):
     fig, ax = plt.subplots(figsize=(50, 15))
     ax.imshow(input_image, cmap=colour)
+
+def get_mocorr_params(input_file_list,out_img_name="params_plot"):
+    rotation_rad=np.empty([len(input_file_list),3])
+    rotation_deg=np.empty([len(input_file_list),3])
+    translation_mm=np.empty([len(input_file_list),3])
+
+    for idx in range(0,len(input_file_list)):
+        vol_id=str(idx).zfill(4)
+        mat=input_file_list[idx].as_posix()
+        avscale = fsl.AvScale()
+        avscale.inputs.mat_file=mat
+        avscale.terminal_output="allatonce"
+        flirt_params = avscale.run()
+        realignment_params=flirt_params.outputs.rotation_translation_matrix
+        rotation_rad[idx,:] = np.array([realignment_params[1][2],realignment_params[2][0],realignment_params[0][1]])
+        translation_mm[idx,:] = np.array([realignment_params[0][3],realignment_params[1][3],realignment_params[2][3]])
+        rotation_deg[idx,:] = np.rad2deg(rotation_rad[idx,:])
+
+    def tra_axis(ax):
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.get_yaxis().tick_left()
+        ax.get_xaxis().tick_bottom()
+        ax.get_xaxis().set_ticklabels([])
+        ax.grid(True)
+        # ax.set_ylim(-3.5,3.5)
+        # ax.set_yticks(np.arange(-3.5,3.6,step=0.5))
+        if len(input_file_list) <= 10:
+            ax.set_xticks(np.arange(0,len(input_file_list)+1,step=1))
+        else:
+            ax.set_xticks(np.arange(0,len(input_file_list)+1,step=10))
+        ax.set_ylabel("Translations (in ${mm}}$)")
+
+    def rot_axis(ax):
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.get_xaxis().tick_bottom()
+        ax.get_yaxis().tick_left()
+        ax.grid(True)
+        # ax.set_ylim(-1.5,1.5)
+        # ax.set_yticks(np.arange(-1.5,1.6,step=0.25))
+        if len(input_file_list) <= 10:
+            ax.set_xticks(np.arange(0,len(input_file_list)+1,step=1))
+        else:
+            ax.set_xticks(np.arange(0,len(input_file_list)+1,step=10))
+        ax.set_ylabel("Rotations (in $^{o}}$)")
+        ax.set_xlabel("Volumes")
+
+    figure, axis = plt.subplots(nrows=2,ncols=1)
+    axis[0].plot(translation_mm)
+    tra_axis(axis[0])
+    axis[1].plot(rotation_deg)
+    rot_axis(axis[1])
+    plt.savefig(out_img_name+".eps", format='eps')
+    plt.savefig(out_img_name+".png", format='png')
+    np.savetxt(out_img_name+".txt",np.hstack((translation_mm, rotation_deg)), delimiter=' ',fmt='%.6f')
+
+def regress_confounds(input_file_path,confound_file_path):
+    """ Regress confounds using Nilearn
+
+    Args:
+        input_file_path (PosixPath): Path to file to be corrected
+        confound_file_path (PosixPath): Path to file with confounds
+    """
+    input_file_data = nib.load(input_file_path.as_posix())
+
+    confound_data = np.loadtxt(fname=confound_file_path.as_posix())
+
+    input_file_data_mean = image.mean_img(imgs=input_file_data,
+                                   target_affine=None,
+                                   target_shape=None,
+                                   verbose=0,
+                                   n_jobs=-1)
+
+    input_file_data_clean = image.clean_img(imgs=input_file_data,
+                                   confounds=confound_data,
+                                   t_r=2.861,
+                                   detrend=False,
+                                   standardize=False,
+                                   ensure_finite=True)
+    
+    input_file_data_clean = image.math_img(
+        "img1 + np.repeat(img2[...,None],100,axis=3)", 
+        img1=input_file_data_clean, 
+        img2=input_file_data_mean)
+
+    input_file_data_outname = Path(input_file_path.stem)
+    input_file_data_outname = input_file_path.parent.as_posix(
+    ) + "/" + input_file_data_outname.stem + "_cleaned.nii.gz"
+    nib.save(input_file_data_clean, filename=input_file_data_outname)

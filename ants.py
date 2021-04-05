@@ -4,7 +4,8 @@ Python scripts for ANTs command-line utilities
 """
 import os
 import sys
-import misc
+# sys.path.append(os.getcwd())
+from . import misc
 import shutil
 import subprocess
 import numpy as np
@@ -59,8 +60,8 @@ def ants_build_template(input_file_list, out_prefix, iters=4,verbose=False, sim=
         "-d 3 -a 0 " + \
         "-k 1 -f 4x2x1 -s 4x2x0vox " + \
         "-q 50x20x5 -t SyN -m CC[2] -c 2 " + \
-        "-j " + num_cores + " " + \
-        "-i " + iters + " " + \
+        "-j " + str(num_cores) + " " + \
+        "-i " + str(iters) + " " + \
         "-o " + out_prefix + " " + \
         input_file_string
 
@@ -136,10 +137,11 @@ def ants_average(input_file_list, norm=0,verbose=False):
 
     main_cmd = "AverageImages 3 " + \
         out_file_path.as_posix() + " " + \
-        int(norm) + " " + \
+        str(int(norm)) + " " + \
         input_file_string
 
     misc.exec_shell(cmd=main_cmd)
+    return out_file_path
 
 def ants_imath(input_file_path,operation=None,parameters=None):
     """Image operations using ImageMath

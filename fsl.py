@@ -4,7 +4,8 @@ Python scripts for FSL command-line utilities
 """
 import os
 import sys
-import misc
+# sys.path.append(os.getcwd())
+from . import misc
 import shutil
 import subprocess
 import numpy as np
@@ -27,7 +28,7 @@ def fsl_split(input_file_path, out_prefix=None, verbose=False):
     
     main_cmd = "fslsplit " + \
         input_file_path.as_posix() + " " + \
-        out_prefix + " " + \
+        out_prefix.as_posix() + " " + \
         "-t"
 
     misc.exec_shell(cmd=main_cmd)
@@ -42,8 +43,14 @@ def fsl_merge(input_file_list, out_file_path, tr=1.0, verbose=False):
         out_file_path (PosixPath): Path to the output file
         tr (float, optional): TR of the data. Defaults to 1.0.
     """
-    input_file_string = misc.list_to_string(in_list=input_file_list)
+    if input_file_list is list:
+        input_file_string = misc.list_to_string(in_list=input_file_list)
+    else:
+        input_file_string = input_file_list
     
+    if out_file_path is str:
+        out_file_path = Path(out_file_path)
+
     main_cmd = "fslmerge -tr " + \
         out_file_path.as_posix() + " " + \
         input_file_string + " " + \
@@ -52,18 +59,19 @@ def fsl_merge(input_file_list, out_file_path, tr=1.0, verbose=False):
     misc.exec_shell(cmd=main_cmd)
 
 
-def fsl_register(fixed_file_path, moving_file_path, transform="rigid", cost="NMI",init=None):
-    """[summary]
+def fsl_register(fixed_file_path, moving_file_path, transform="rigid", cost="NMI",init=None,run=True):
+    """Rigid register using flirt 
 
     Args:
-        fixed_file_path ([type]): [description]
-        moving_file_path ([type]): [description]
-        transform (str, optional): [description]. Defaults to "rigid".
-        cost (str, optional): [description]. Defaults to "NMI".
-        init ([type], optional): [description]. Defaults to None.
-
-    Returns:
-        [type]: [description]
+        fixed_file_path (PosixPath): Path to fixed file.
+        moving_file_path (PosixPath): Path to moving file.
+        transform (str, optional): "rigid" or "affine". Defaults to "rigid".
+        cost (str, optional):   "NMI" --> "normmi"
+                                "NC"  --> "normcorr"
+                                "CR"  --> "corrratio"
+                                Defaults to "NMI".
+        init (PosixPath, optional): Path to initial matrix. Defaults to None.
+        run (str, optional): Set to False to only export command. Defaults to True.
     """
     out_file_prefix = misc.get_prefix(moving_file_path)
 
@@ -102,8 +110,12 @@ def fsl_register(fixed_file_path, moving_file_path, transform="rigid", cost="NMI
         out_file_prefix.as_posix() + "_fslWarped.nii.gz" + " " + \
         "-omat" + " " + \
         out_file_prefix.as_posix() + "_fsl.mat"
-        
-    misc.exec_shell(cmd=main_cmd)
+    if run is True:
+        misc.exec_shell(cmd=main_cmd)
+        out_file = out_file_prefix.as_posix() + "_fslWarped.nii.gz"
+        return out_file
+    else:
+        return main_cmd
 
 def fsl_realign(input_file_list, fixed_file_path=None):
     """Run flirt in parallel for 3D rigid realignment
@@ -112,20 +124,20 @@ def fsl_realign(input_file_list, fixed_file_path=None):
         input_file_list (PosixPath): List of files for realignment
         fixed_file_path (PosixPath, optional): Path to a reference file. Defaults to None.
     """
-    
     realign_cmd_list = list()
+
     if fixed_file_path is None:
         for vol_num in range(1, len(input_file_list)):
             cmd = fsl_register(fixed_file_path=input_file_list[0], 
-                               moving_file_path=input_file_list[vol_num])
+                               moving_file_path=input_file_list[vol_num],run=False)
             realign_cmd_list.append(cmd)
-        misc.exec_parashell(realign_cmd_list)
+        misc.exec_parashell(cmd_list=realign_cmd_list)
     else:
-        for vol_num in range(len(input_file_list)):
+        for vol_num in range(0,len(input_file_list)):
             cmd = fsl_register(fixed_file_path=fixed_file_path, 
-                        moving_file_path=input_file_list[vol_num])
+                        moving_file_path=input_file_list[vol_num],run=False)
             realign_cmd_list.append(cmd)
-        misc.exec_parashell(realign_cmd_list)
+        misc.exec_parashell(cmd_list=realign_cmd_list)
 
 def fsl_reslice(fixed_file_path, moving_file_path, mat_file_path, interp="spline"):
     """Apply estimated transformations using flirt
@@ -147,6 +159,8 @@ def fsl_reslice(fixed_file_path, moving_file_path, mat_file_path, interp="spline
         "-out " + out_file_prefix.as_posix() + "_fslWarped.nii.gz"
 
     misc.exec_shell(cmd=main_cmd)
+    outfile = out_file_prefix.as_posix() + "_fslWarped.nii.gz"
+    return outfile
     
 def fsl_invertmat(mat_file_path):
     """Invert flirt matrix
@@ -161,7 +175,23 @@ def fsl_invertmat(mat_file_path):
         out_file_prefix.as_posix() + "_inverse.mat" + " " + \
         "-inverse " + \
         mat_file_path.as_posix()
+    misc.exec_shell(cmd=main_cmd)
+    return out_file_prefix.as_posix() + "_inverse.mat"
 
+def fsl_concatmat(mat_A2B_path,mat_B2C_path,mat_A2C_out):
+    """Concat flirt matrix to get mat_A2C_out
+
+    Args:
+        mat_A2B_path (PosixPath): Path to affine matrix.
+        mat_B2C_path (PosixPath): Path to affine matrix.
+        mat_A2C_out (PosixPath): Path to affine matrix.        
+    """
+    main_cmd = "convert_xfm " + \
+        "-omat " + \
+        mat_A2C_out.as_posix() + " " + \
+        "-concat " + \
+        mat_B2C_path.as_posix() + " " + \
+        mat_A2B_path.as_posix()
     misc.exec_shell(cmd=main_cmd)
 
 def fsl_avscale(mat_file_path):
@@ -305,6 +335,35 @@ def fsl_topup(input_file_path, topup_parameters, topup_config=None, verbose=Fals
                 "fieldmap_mag_brain_mask": out.as_posix() + "_fslTopup_fieldmap_mag_fslBet_mask.nii.gz"}
     return output_dict
 
+def fsl_applytopup(input_file_path, topup_parameters, topup_output_prefix, in_index=1, verbose=False):
+    """Wrap applytopup
+
+    Args:
+        input_file_path (PosixPath): Path to 4D file to estimate topup
+        topup_parameters (PosixPath): Path to topup parameters file
+        topup_output_prefix (str): Path to topup output prefix
+        in_index(int, optional): Input file index for unwarping
+    """
+    if type(input_file_path) is str:
+        input_file_path = Path(input_file_path)
+    out = misc.get_prefix(input_file_path)
+
+    if type(topup_output_prefix) is not str:
+        topup_output_prefix = topup_output_prefix.as_posix()
+    
+    main_cmd = "applytopup " + \
+        "--method=jac" + " " + \
+        "--out=" + out.as_posix() +"_fslDiCorr" + " " + \
+        "--imain=" + input_file_path.as_posix() + " " + \
+        "--datain=" + topup_parameters.as_posix() + " " + \
+        "--topup=" + topup_output_prefix + " " + \
+        "--inindex=" + str(in_index)
+    
+    misc.exec_shell(cmd=main_cmd)
+
+    # Calc temporal mean
+    fsl_Tmean(input_file_path=Path(out.as_posix() +"_fslDiCorr.nii.gz"))    
+
 def fsl_surrDiff(input_file_path, order="tc", tr=1.0, add_mean=True, bold=False, verbose=False):
     """Do surround subtraction the FSL way command
     
@@ -338,16 +397,13 @@ def fsl_surrDiff(input_file_path, order="tc", tr=1.0, add_mean=True, bold=False,
     if len(even_filelist) != len(odd_filelist):
         even_filelist = even_filelist[:-1]
         fsl_merge(input_file_list=even_filelist,
-                out_file_path=out_prefix.as_posix() + "/even.nii.gz",
-                tr=1.0)
+                out_file_path=Path(out_prefix.as_posix() + "/even.nii.gz"))
     else:
         fsl_merge(input_file_list=even_filelist,
-                out_file_path=out_prefix.as_posix() + "/even.nii.gz",
-                tr=1.0)
+                out_file_path=Path(out_prefix.as_posix() + "/even.nii.gz"))
 
     fsl_merge(input_file_list=odd_filelist,
-            out_file_path=out_prefix.as_posix() + "/odd.nii.gz",
-            tr=1.0)
+            out_file_path=Path(out_prefix.as_posix() + "/odd.nii.gz"))
 
     def temp_shift(infile, outfile, shift):
         """Temporal interpolation using slicetimer
@@ -358,8 +414,8 @@ def fsl_surrDiff(input_file_path, order="tc", tr=1.0, add_mean=True, bold=False,
             shift (float): shift factor.
         """
         main_cmd = "slicetimer " + \
-            "-i " + infile.as_posix() + " " + \
-            "-o " + outfile.as_posix() + " " + \
+            "-i " + infile + " " + \
+            "-o " + outfile + " " + \
             "--tglobal=" + str(shift)
 
         misc.exec_shell(cmd=main_cmd)
@@ -394,6 +450,7 @@ def fsl_surrDiff(input_file_path, order="tc", tr=1.0, add_mean=True, bold=False,
     misc.exec_shell(cmd=main_cmd)
 
     surr_diff_out_path = Path(out_prefix.as_posix() + "/surrDiff")
+    
     misc.make_dir(input_file_path=surr_diff_out_path)
 
     even_sub_path = Path(surr_diff_out_path.as_posix() + "/e_")
@@ -405,6 +462,7 @@ def fsl_surrDiff(input_file_path, order="tc", tr=1.0, add_mean=True, bold=False,
     odd_sub_path = Path(surr_diff_out_path.as_posix() + "/o_")
     fsl_split(input_file_path=Path(out_prefix.as_posix() + "/odd_to_even.nii.gz"),
             out_prefix=odd_sub_path)
+    
     odd_sub_filelist = list(surr_diff_out_path.glob("o_*.nii.gz"))
     odd_sub_filelist.sort()
 
@@ -414,8 +472,8 @@ def fsl_surrDiff(input_file_path, order="tc", tr=1.0, add_mean=True, bold=False,
 
     subtracted_fulllist_merge = misc.list_to_string(in_list=subtracted_fulllist)
     fsl_merge(input_file_list=subtracted_fulllist_merge,
-            out_file_path=out_prefix.as_posix() + "_surrDiff.nii.gz",
-            tr=2.861)
+            out_file_path=Path(out_prefix.as_posix() + "_surrDiff.nii.gz"),
+            tr=tr)
     fsl_Tmean(input_file_path=Path(out_prefix.as_posix() + "_surrDiff.nii.gz"))
 
     if add_mean is True:
@@ -427,8 +485,6 @@ def fsl_surrDiff(input_file_path, order="tc", tr=1.0, add_mean=True, bold=False,
             out_prefix.as_posix() + "_fslTmean.nii.gz" + " " + \
             out_prefix.as_posix() + "_surrDiff_plusMean.nii.gz"
         misc.exec_shell(cmd=main_cmd)
-
-    misc.remove_dir(surr_diff_out_path)
 
     if bold is True:
         main_cmd = "fslmaths " + \
@@ -451,13 +507,13 @@ def fsl_surrDiff(input_file_path, order="tc", tr=1.0, add_mean=True, bold=False,
         misc.make_dir(input_file_path=surr_avg_out_path)
 
         even_sub_path = Path(surr_avg_out_path.as_posix() + "/e_")
-        fsl_split(input_file_path=Path(surr_avg_out_path.as_posix() + "/even_to_odd.nii.gz"),
+        fsl_split(input_file_path=Path(out_prefix.as_posix() + "/even_to_odd.nii.gz"),
                 out_prefix=even_sub_path)
         even_sub_filelist = list(surr_avg_out_path.glob("e_*.nii.gz"))
         even_sub_filelist.sort()
 
         odd_sub_path = Path(surr_avg_out_path.as_posix() + "/o_")
-        fsl_split(input_file_path=Path(surr_avg_out_path.as_posix() + "/odd_to_even.nii.gz"),
+        fsl_split(input_file_path=Path(out_prefix.as_posix() + "/odd_to_even.nii.gz"),
                 out_prefix=odd_sub_path)
         odd_sub_filelist = list(surr_avg_out_path.glob("o_*.nii.gz"))
         odd_sub_filelist.sort()
@@ -468,11 +524,11 @@ def fsl_surrDiff(input_file_path, order="tc", tr=1.0, add_mean=True, bold=False,
 
         averaged_fulllist_merge = misc.list_to_string(in_list=averaged_fulllist)
         fsl_merge(input_file_list=averaged_fulllist_merge,
-                out_file_path=out_prefix.as_posix() + "_surrAvg.nii.gz",
-                tr=1.0)
+                out_file_path=Path(out_prefix.as_posix() + "_surrAvg.nii.gz"),
+                tr=tr)
         fsl_Tmean(input_file_path=Path(out_prefix.as_posix() + "_surrAvg.nii.gz"))
-
         misc.remove_dir(surr_avg_out_path)
+
 
     misc.remove_files(src=out_prefix,
                  pattern="vol*.nii.gz")
@@ -480,7 +536,8 @@ def fsl_surrDiff(input_file_path, order="tc", tr=1.0, add_mean=True, bold=False,
                  pattern="odd*.nii.gz")
     misc.remove_files(src=out_prefix,
                  pattern="even*.nii.gz")
-
+    misc.remove_dir(surr_diff_out_path)
+    misc.remove_dir(out_prefix)
 
 def fsl_bbr(fixed_file_path,moving_file_path,wm_seg_path,interp="spline",init_file_path=None):
     """Register using BBR
@@ -496,7 +553,7 @@ def fsl_bbr(fixed_file_path,moving_file_path,wm_seg_path,interp="spline",init_fi
     out_file_prefix = misc.get_prefix(moving_file_path)
     if init_file_path is not None:
         main_cmd = "flirt -nosearch -noresample -noresampblur " + \
-            "-schedule ${FSLDIR}/etc/flirtsch/bbr.sch -cost bbr " + \
+            "-cost bbr " + \
             "-interp " + interp + " " + \
             "-init " + init_file_path.as_posix() + " " + \
             "-ref " + fixed_file_path.as_posix() + " " + \
@@ -505,6 +562,7 @@ def fsl_bbr(fixed_file_path,moving_file_path,wm_seg_path,interp="spline",init_fi
             "-omat " + out_file_prefix.as_posix() + "_fslBBR.mat"  + " " + \
             "-out " + out_file_prefix.as_posix() + "_fslbbWarped.nii.gz"
         misc.exec_shell(cmd=main_cmd)
+        outfile = out_file_prefix.as_posix() + "_fslBBR.mat"
     else:
         main_cmd = "flirt -nosearch -noresample -noresampblur " + \
             "-schedule ${FSLDIR}/etc/flirtsch/bbr.sch -cost bbr " + \
@@ -515,6 +573,9 @@ def fsl_bbr(fixed_file_path,moving_file_path,wm_seg_path,interp="spline",init_fi
             "-omat " + out_file_prefix.as_posix() + "_fslBBR.mat"  + " " + \
             "-out " + out_file_prefix.as_posix() + "_fslbbWarped.nii.gz"
         misc.exec_shell(cmd=main_cmd)
+        outfile = out_file_prefix.as_posix() + "_fslBBR.mat"
+    return outfile
+    
 
 def fsl_despike(input_file_path, mask_file_path):
     """Despike fieldmap

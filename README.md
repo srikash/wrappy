@@ -1,2 +1,2 @@
-# wrappy
-Python wraps for my frequently used MRI-related cmdline tools 
+# wrappers
+Python wrappers to MRI-related cmdline utilities
