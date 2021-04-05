@@ -17,7 +17,8 @@ def gibbs_unring(input_file_path):
 
     main_cmd = "mrdegibbs" + " " + \
         input_file_path + " " + \
-        out_file_prefix.as_posix() + "deG.nii.gz"
+        out_file_prefix.as_posix() + "_deG.nii.gz"
+    misc.exec_shell(cmd=main_cmd)
 
 def denoise_diffusion(input_file_path):
     """MP-PCA denoising for DWI
@@ -30,6 +31,6 @@ def denoise_diffusion(input_file_path):
 
     main_cmd = "dwidenoise" + " " + \
         input_file_path.as_posix() + " " + \
-        out_file_prefix.as_posix() + "deN.nii.gz"
+        out_file_prefix.as_posix() + "_deN.nii.gz"
 
     misc.exec_shell(cmd=main_cmd)
